@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jornada do Cavaleiro — Uma aventura medieval em pixel art | DARO Games</title>
-<meta name="description" content="Jornada do Cavaleiro é um jogo de plataforma 2D em pixel art da DARO Games: 3 atos, 11 fases, 5 chefes e uma história contra o Rei Sombrio. Apoie o projeto no Catarse!">
+<meta name="description" content="Jornada do Cavaleiro é um jogo de plataforma 2D em pixel art da DARO Games, em desenvolvimento: 3 atos, 11 fases, 5 chefes e muito mais a caminho. Apoie o projeto no Catarse!">
 <meta property="og:title" content="Jornada do Cavaleiro — DARO Games">
 <meta property="og:description" content="Plataforma 2D em pixel art: 3 atos, 11 fases e 5 chefes. Ajude o último cavaleiro da Ordem a salvar o Reino de Aurora.">
 <meta property="og:image" content="img/og.jpg">
@@ -161,6 +161,22 @@
   .soon { display: block; margin-top: 18px; color: var(--muted); font-size: 19px; }
   @media (max-width: 760px) { .goals { grid-template-columns: 1fr; } }
 
+  /* ---------- em desenvolvimento ---------- */
+  .dev-badge { display: inline-flex; align-items: center; gap: 10px; background: rgba(245,197,66,.12); border: 2px dashed var(--gold); color: var(--gold2); padding: 6px 14px; font-size: 20px; margin-bottom: 18px; }
+  .dev-badge i { width: 10px; height: 10px; background: var(--gold); box-shadow: 0 0 10px var(--gold); animation: pulse 1.2s infinite; }
+  .roadmap { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; }
+  .road { background: var(--card); border: 3px dashed var(--line); padding: 26px 20px; text-align: center; position: relative; }
+  .road .ico { height: 84px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 14px; }
+  .road .ico img { max-height: 84px; }
+  .road .ico img.mist { filter: brightness(0) drop-shadow(0 0 6px rgba(245,197,66,.6)); }
+  .road h3 { font-size: 15px; color: var(--gold); margin-bottom: 8px; }
+  .road p { font-size: 19px; color: var(--muted); }
+  .road .q { position: absolute; top: 10px; right: 12px; font-family: 'Titulo', monospace; color: var(--gold); opacity: .5; }
+  .dev-note { text-align: center; margin-top: 36px; color: var(--text); font-size: 22px; }
+  .dev-note b { color: var(--gold); }
+  @media (max-width: 980px) { .roadmap { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 520px) { .roadmap { grid-template-columns: 1fr; } }
+
   /* ---------- rodapé ---------- */
   footer { padding: 46px 0; text-align: center; color: var(--muted); font-size: 19px; }
   footer .brand { font-family: 'Titulo', monospace; color: var(--gold); font-size: 18px; letter-spacing: 3px; margin-bottom: 8px; }
@@ -183,6 +199,7 @@
       <li><a href="#chefes">Chefes</a></li>
       <li><a href="#recursos">Recursos</a></li>
       <li><a href="#galeria">Galeria</a></li>
+      <li><a href="#novidades">Novidades</a></li>
     </ul>
     <a class="btn cta catarse-link" href="#apoie">APOIE</a>
   </div>
@@ -194,14 +211,15 @@
   <div id="embers"></div>
   <div class="wrap">
     <div>
+      <div class="dev-badge"><i></i>EM DESENVOLVIMENTO</div>
       <div class="kicker">DARO GAMES APRESENTA</div>
       <h1 class="title"><span class="a">JORNADA DO</span><span class="b">CAVALEIRO</span></h1>
       <div class="tagline">— Uma aventura medieval em pixel art —</div>
       <p class="lead">O Reino de Aurora caiu nas trevas. Empunhe espada, escudo e fogo mágico e atravesse florestas, catacumbas, vulcões e o próprio Abismo para enfrentar o Rei Sombrio.</p>
       <div class="stats">
         <div class="stat"><b>3</b><small>atos</small></div>
-        <div class="stat"><b>11</b><small>fases</small></div>
-        <div class="stat"><b>5</b><small>chefes</small></div>
+        <div class="stat"><b>11+</b><small>fases</small></div>
+        <div class="stat"><b>5+</b><small>chefes</small></div>
         <div class="stat"><b>100%</b><small>pixel art</small></div>
       </div>
       <div class="ctas">
@@ -329,11 +347,28 @@
   </div>
 </section>
 
+<!-- EM DESENVOLVIMENTO -->
+<section id="novidades">
+  <div class="wrap">
+    <h2 class="reveal">A JORNADA ESTÁ SÓ COMEÇANDO</h2>
+    <p class="sub reveal">A Jornada do Cavaleiro está em desenvolvimento ativo. O que você vê aqui é só o começo: o reino ainda vai crescer muito.</p>
+    <div class="roadmap">
+      <div class="road reveal"><span class="q">?</span><div class="ico"><img class="px" src="img/spr_chest.png" alt=""></div><h3>MAIS FASES</h3><p>Novos mundos, novos atos e caminhos ainda mais perigosos.</p></div>
+      <div class="road reveal"><span class="q">?</span><div class="ico"><img class="px mist" src="img/spr_dragon.png" alt=""></div><h3>MAIS CHEFES</h3><p>Novos inimigos colossais esperando pelo cavaleiro.</p></div>
+      <div class="road reveal"><span class="q">?</span><div class="ico"><img class="px mist" src="img/spr_gargoyle.png" alt=""></div><h3>NOVOS INIMIGOS</h3><p>Criaturas inéditas com ataques e truques próprios.</p></div>
+      <div class="road reveal"><span class="q">?</span><div class="ico"><img class="px" src="img/spr_ally.png" alt=""></div><h3>E MUITO MAIS</h3><p>Novas habilidades, segredos, itens e modos de jogo.</p></div>
+    </div>
+    <p class="dev-note reveal">Cada versão nova chega com melhorias. <b>Seu apoio e suas ideias ajudam a decidir o que vem a seguir!</b></p>
+  </div>
+</section>
+
+<div class="divider"></div>
+
 <!-- APOIE -->
 <section class="support" id="apoie">
   <div class="wrap box">
     <h2 class="reveal">APOIE A JORNADA</h2>
-    <p class="reveal">A Jornada do Cavaleiro é um projeto independente da DARO Games. Com o seu apoio no Catarse, o jogo ganha mais conteúdo, mais polimento e chega a mais jogadores.</p>
+    <p class="reveal">A Jornada do Cavaleiro é um projeto independente da DARO Games. O jogo está em desenvolvimento e, com o seu apoio no Catarse, ganha mais fases, mais chefes, mais polimento e chega a mais jogadores.</p>
     <div class="goals reveal">
       <div class="goal"><b>MAIS AVENTURA</b><span>Novas fases, inimigos e segredos.</span></div>
       <div class="goal"><b>MAIS POLIMENTO</b><span>Arte, música e testes em mais aparelhos.</span></div>
