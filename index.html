@@ -11,7 +11,7 @@
   html, body { width:100%; height:100%; }
   body {
     background: radial-gradient(ellipse at center, #1a0d14 0%, #050308 75%);
-    display:flex; justify-content:center; align-items:center;
+    display:block;
     overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none;
   }
   canvas { display:block; image-rendering: pixelated; image-rendering: crisp-edges; }
@@ -43,10 +43,13 @@ const IN_APP = /KQApp/.test(navigator.userAgent);   // rodando dentro do app And
 // Widescreen: a altura lógica é fixa (270) e a largura acompanha a proporção da tela (de 16:9 até ~21:9),
 // assim não sobram faixas pretas nas laterais em celulares compridos — o jogador simplesmente vê mais cenário.
 const GH = 270;
+const MAX_CONTINUES = 3;   // continues por partida
+const SHOP_MAX_BUYS = 2;   // melhorias que podem ser compradas na forja entre as fases
+const ALLY_PER_LEVEL = 2, ALLY_TIME = 8;   // especial: cavaleiro aliado (usos por fase, segundos em campo)
 const GW = (() => {
   let r;
   if (IS_TOUCH) r = Math.max(screen.width, screen.height) / Math.max(1, Math.min(screen.width, screen.height)); // celular: proporção da tela deitada
-  else r = window.innerWidth / Math.max(1, window.innerHeight);
+  else r = (screen.width || window.innerWidth) / Math.max(1, screen.height || window.innerHeight); // PC: proporção do monitor, para a tela cheia ocupar tudo
   r = Math.min(Math.max(r || 16 / 9, 16 / 9), 2.34);
   const w = Math.round(GH * r / 4) * 4;
   return IS_TOUCH ? Math.max(w, 568) : w;   // no celular sempre sobra espaço para os painéis de controle
@@ -192,6 +195,9 @@ const SFX = {
   stomp()  { const t = this._t(); if (t == null) return; AudioSys.osc(t, 70, { f2: 30, d: 0.5, type: 'sine', v: 0.5 }); AudioSys.noise(t, { d: 0.4, v: 0.35, type: 'lowpass', f: 600, f2: 80 }); },
   giantRoar() { const t = this._t(); if (t == null) return; AudioSys.osc(t, 80, { f2: 40, d: 1.5, type: 'sawtooth', v: 0.22, lp: 600, vib: 12, vibAmt: 10, a: 0.1, slide: 1.5 }); AudioSys.noise(t, { d: 1.3, v: 0.3, type: 'lowpass', f: 700, f2: 150, a: 0.1 }); },
   scream() { const t = this._t(); if (t == null) return; AudioSys.osc(t, 900, { f2: 1500, d: 0.9, type: 'sawtooth', v: 0.06, lp: 3000, vib: 9, vibAmt: 40, a: 0.05 }); AudioSys.osc(t, 1200, { f2: 700, d: 0.9, type: 'sine', v: 0.08, vib: 7, vibAmt: 30 }); AudioSys.noise(t, { d: 0.8, v: 0.1, type: 'bandpass', f: 2500, q: 3 }); },
+  chest()  { const t = this._t(); if (t == null) return; AudioSys.noise(t, { d: 0.12, v: 0.2, type: 'lowpass', f: 900 }); AudioSys.osc(t, 140, { f2: 90, d: 0.15, type: 'square', v: 0.08, lp: 800 }); [784, 988, 1175, 1568].forEach((f, i) => AudioSys.osc(t + 0.12 + i * 0.07, f, { d: 0.2, type: 'square', v: 0.06 })); },
+  secret() { const t = this._t(); if (t == null) return; [69, 73, 76, 81, 80, 85, 88].forEach((m, i) => AudioSys.osc(t + i * 0.08, nf(m), { d: 0.16, type: 'square', v: 0.06, lp: 3200 })); AudioSys.osc(t + 0.56, nf(93), { d: 0.5, type: 'triangle', v: 0.08 }); },
+  type()   { const t = this._t(); if (t == null) return; AudioSys.osc(t, 520 + Math.random() * 60, { d: 0.03, type: 'square', v: 0.025, lp: 2000 }); },
   pause()  { const t = this._t(); if (t == null) return; AudioSys.osc(t, 880, { d: 0.06, type: 'square', v: 0.06 }); AudioSys.osc(t + 0.07, 660, { d: 0.1, type: 'square', v: 0.06 }); },
   pop()    { const t = this._t(); if (t == null) return; AudioSys.noise(t, { d: 0.5, v: 0.18, type: 'lowpass', f: 2500, f2: 300 }); AudioSys.osc(t, 300 + Math.random() * 200, { f2: 60, d: 0.25, type: 'sine', v: 0.15 }); },
   levelDone() { const t = this._t(); if (t == null) return; [[72, 0], [76, 0.12], [79, 0.24], [84, 0.36]].forEach(([m, dt]) => { AudioSys.osc(t + dt, nf(m), { d: 0.2, type: 'square', v: 0.09, lp: 3000 }); }); [72, 76, 79, 84].forEach(m => AudioSys.osc(t + 0.5, nf(m), { d: 1.0, type: 'triangle', v: 0.09, sus: 0.6 })); },
@@ -253,6 +259,18 @@ const TRACKS = {
     lead: `E5 . G5 . B5 . A5 . G5 . F#5 . E5 - D#5 -   E5 - - - B4 - - - C5 - B4 - A4 - B4 -
            E5 . G5 . B5 . C6 . B5 . A5 . G5 - F#5 -   G5 - F#5 - E5 - D#5 - E5 - - - - - - -`,
     chords: ['Em', 'C', 'Em', 'B'], bass: 'R.RR5.R.R.RR5.O.', arp: '0121', drums: 'x.hsx.hsx.hsxshs' },
+  abyss: { bpm: 104, leadType: 'square', leadVol: 0.06, arpVol: 0.025,
+    lead: `C5 - - - Eb5 - - - D5 - C5 - B4 - - -   C5 - - - G4 - - - Ab4 - G4 - F#4 - G4 -
+           C5 - - - Eb5 - - - G5 - F5 - Eb5 - D5 -   Eb5 - D5 - C5 - B4 - C5 - - - - - - -`,
+    chords: ['Cm', 'Ab', 'Cm', 'G'], bass: 'R...R.5.R...R.O.', arp: '0102', drums: 'k...h.h.s...h.hh' },
+  king: { bpm: 156, leadType: 'sawtooth', leadVol: 0.05, leadLp: 2600,
+    lead: `C5 C5 . C5 Eb5 . C5 . F#5 . F5 . Eb5 . D5 .   C5 - - - G4 - - - Ab4 - G4 - F4 - G4 -
+           C5 C5 . C5 Eb5 . C5 . G5 . Ab5 . G5 . F#5 .   G5 - F5 - Eb5 - D5 - C5 - - - - - - -`,
+    chords: ['Cm', 'Ab', 'Fm', 'G'], bass: 'RRR.RR5.RRR.R5O5', arp: '0121', drums: 'x.hsx.hsx.hsxshs' },
+  story: { bpm: 72, leadType: 'triangle', leadVol: 0.12, arpVol: 0.02,
+    lead: `E5 - - - D5 - - - C5 - - - B4 - - -   A4 - - - B4 - C5 - D5 - - - - - - -
+           E5 - - - G5 - - - F5 - E5 - D5 - - -   E5 - - - - - - - . . . . . . . .`,
+    chords: ['Am', 'F', 'C', 'G'], bass: 'R-------5-------', bassSus: true, arp: '0121', drums: 'k...............' },
   victory: { bpm: 120, leadType: 'square', leadVol: 0.07,
     lead: `C5 - E5 - G5 - C6 - - - G5 - C6 - - -   A5 - F5 - A5 - C6 - B5 - G5 - D6 - - -
            C6 - B5 - A5 - G5 - F5 - E5 - D5 - G5 -   C6 - - - - - - - G5 - E5 - G5 - - -`,
@@ -683,6 +701,45 @@ function drawQueen(P, i) {
 }
 const WALK_FRAMES = [{ b: 0, lb: -2, lf: 2 }, { b: 1, lb: 0, lf: 0 }, { b: 0, lb: 2, lf: -2 }, { b: 1, lb: 0, lf: 0 }, { b: 0, lb: 0, lf: 1, atk: true }];
 
+// ---------- Ato III: cultista, gárgula, baús ----------
+function drawCultist(P, f) {
+  const r = '#4a1a5a', rL = '#6a2a7a', rD = '#2a0a36', b = f.b, gold = '#c9a040';
+  P.r(9 + f.lb, 30, 4, 3, '#1a0a20'); P.r(15 + f.lf, 30, 4, 3, '#1a0a20');
+  P.tri(14, 9 + b, 4, 31, 24, 31, r); P.tri(14, 9 + b, 4, 31, 10, 31, rD); P.r(13, 14 + b, 2, 16, rL);
+  P.r(8, 28, 13, 3, r); for (let x = 7; x < 22; x += 3) P.p(x, 31, rD);
+  P.r(11, 18 + b, 6, 1, gold); P.p(14, 21 + b, gold);
+  P.ell(14, 8 + b, 6, 6, rD); P.ell(14, 9 + b, 4, 4, '#08020c'); P.p(12, 9 + b, '#ff4af0'); P.p(16, 9 + b, '#ff4af0');
+  P.tri(14, 0 + b, 9, 5 + b, 19, 5 + b, rD);
+  const up = f.atk;
+  P.r(22, (up ? 4 : 10) + b, 2, up ? 26 : 21, '#3a2418');
+  P.circ(23, (up ? 3 : 9) + b, up ? 3 : 2, up ? '#ff80ff' : '#c040ff'); P.p(22, (up ? 2 : 8) + b, '#ffffff');
+  P.r(18, 16 + b, 5, 3, r); P.r(21, 16 + b, 2, 2, '#c8b8a8');
+}
+function drawGargoyle(P, i) {
+  const s = '#5a5468', sL = '#8a849a', sD = '#363244', w = '#4a4458', wL = '#6a6480';
+  const wy = [0, 6, 12][i];
+  P.tri(12, 11, 0, wy, 6, 15, w); P.tri(18, 11, 30, wy, 24, 15, w); P.line(12, 11, 1, wy, wL); P.line(18, 11, 29, wy, wL);
+  P.ell(15, 14, 5, 6, s); P.r(13, 11, 2, 7, sL);
+  P.ell(15, 7, 4, 3, s); P.tri(11, 6, 10, 1, 13, 5, sD); P.tri(17, 5, 20, 1, 19, 6, sD);
+  P.p(13, 7, '#ff3a3a'); P.p(17, 7, '#ff3a3a'); P.r(14, 9, 3, 1, sD);
+  P.r(12, 19, 2, 3, sD); P.r(17, 19, 2, 3, sD); P.p(11, 22, '#e8dcc0'); P.p(19, 22, '#e8dcc0');
+  P.line(15, 20, 15, 25, sD); P.p(14, 25, sD);
+}
+function drawChest(P, open, rare) {
+  const w = rare ? '#3a1a5a' : '#7a4a22', wL = rare ? '#5a2a8a' : '#a06a34', wD = rare ? '#220a36' : '#4a2a12', m = rare ? '#ffd23a' : '#c9a040', mL = rare ? '#fff6c0' : '#f0d070';
+  P.r(1, 8, 20, 10, w); P.r(1, 8, 20, 2, wL); P.r(1, 16, 20, 2, wD);
+  P.r(1, 8, 2, 10, m); P.r(19, 8, 2, 10, m); P.r(10, 8, 2, 10, m);
+  if (!open) {
+    P.r(1, 2, 20, 6, w); P.r(2, 1, 18, 1, w); P.r(1, 2, 20, 1, wL); P.r(1, 2, 2, 6, m); P.r(19, 2, 2, 6, m); P.r(10, 2, 2, 6, m);
+    P.r(9, 6, 4, 4, mL); P.p(10, 8, '#1a0a00'); P.p(11, 8, '#1a0a00');
+    if (rare) { P.p(5, 5, '#ff4af0'); P.p(16, 5, '#5affd8'); }
+  } else {
+    P.r(1, 0, 20, 3, wD); P.r(1, 0, 20, 1, wL); P.r(1, 0, 2, 3, m); P.r(19, 0, 2, 3, m);
+    P.r(3, 8, 16, 3, '#1a0a06'); P.r(4, 7, 4, 2, '#ffd23a'); P.r(9, 7, 3, 2, '#fff6c0'); P.r(13, 7, 5, 2, '#ffd23a');
+  }
+}
+const PAL_KING = { st: '#2e2840', stL: '#5e4e78', stD: '#1a1624', stDD: '#0a080e', tab: '#5a0a18', tabL: '#8a1424', tabD: '#300610', trim: '#ffd23a', cape: '#2a0c3a', capeD: '#12041c', plume: null, visor: '#000000', eye: '#ff40ff', boot: '#100c16', bootL: '#2a2236', sw: '#ff8af4', swD: '#9a20b0', hilt: '#ffd23a', grip: '#1a0d22', horns: true, shield: false };
+
 function drawDragon(P, f) {
   const c = { body: '#c0283a', bodyL: '#e8565e', bodyD: '#801625', bodyDD: '#4c0a16', belly: '#f2bd52', bellyD: '#c48a2c', spike: '#3d0812', wing: '#6e1424', wingL: '#a3303e', wingDD: '#3a0812', wingD: '#5a1020', horn: '#f0e4c8', hornD: '#c8b898', eye: '#ffe94a' };
   const wo = f.wo, br = f.br;
@@ -992,6 +1049,59 @@ function genScenery(scene) {
     P.p(2, 4, '#8a8a8a'); P.p(29, 4, '#8a8a8a'); P.tri(26, 13, 32, 13, 30, 16, '#4a3a2a'); P.r(8, 0, 6, 2, '#4a6a3a');
   });
 
+  // ===== ABISMO (Ato III) =====
+  S('bg7_0', GW, GH, (P, i, ctx) => {
+    skyGradient(ctx, [[0, '#05020a'], [0.45, '#1a0830'], [0.8, '#3a1048'], [1, '#5a1a4a']]);
+    const R = rng(97); stars(P, R, 90, 150);
+    const cx = Math.round(GW * 0.62), cy = 62;
+    const mg = ctx.createRadialGradient(cx, cy, 18, cx, cy, 86); mg.addColorStop(0, 'rgba(255,120,220,.55)'); mg.addColorStop(0.35, 'rgba(180,60,220,.25)'); mg.addColorStop(1, 'rgba(120,20,160,0)');
+    ctx.fillStyle = mg; ctx.fillRect(cx - 90, cy - 90, 180, 180);
+    P.circ(cx, cy, 23, '#ffb0f0'); P.circ(cx, cy, 21, '#c050e0'); P.circ(cx - 1, cy - 1, 19, '#0a0410'); P.circ(cx - 3, cy - 2, 16, '#05020a');
+    for (let k = 0; k < 4; k++) P.r(cx - 80 + k * 31, cy + 32 + k * 9, 60 + k * 14, 2, 'rgba(10,2,16,.75)');
+    for (let k = 0; k < 6; k++) { const x = R() * GW | 0, y = 20 + R() * 90 | 0; wrapX(x, xx => { P.r(xx, y, 3, 2, '#1a0a26'); P.p(xx + 1, y + 2, '#1a0a26'); }); }
+  });
+  S('bg7_1', GW, GH, (P) => {
+    const R = rng(101), col = '#1c0c2a';
+    const isle = (x, y, w) => {
+      P.ell(x, y, w, 4, col); P.tri(x - w, y, x + w, y, x + 1, y + w * 1.1, col); P.tri(x - w * 0.7, y, x - w * 0.1, y, x - w * 0.45, y + w * 0.8, col);
+      P.r(x - 2, y - 10, 4, 10, col); P.tri(x - 4, y - 10, x + 4, y - 10, x, y - 18, col); P.p(x, y - 7, '#c060ff'); P.p(x + w - 4, y - 1, '#9a40e0');
+    };
+    [[0.08, 120, 22], [0.31, 92, 15], [0.54, 140, 26], [0.78, 104, 18], [0.93, 132, 12]].forEach(([fx, y, w]) => wrapX(Math.round(fx * GW), xx => isle(xx, y, w)));
+    for (let x = 0; x < GW; x++) { const a = x / GW * Math.PI * 2; const top = Math.round(214 - 12 * Math.sin(a * 3) - 6 * Math.sin(a * 7 + 1)); P.r(x, top, 1, GH - top, '#160a22'); P.p(x, top, '#2a1640'); }
+  });
+  S('bg7_2', GW, GH, (P) => {
+    const R = rng(103), col = '#120818', colL = '#24122e';
+    const spire = (x, w, h) => {
+      const base = 236; P.r(x, base - h, w, h, col); P.r(x, base - h, 2, h, colL);
+      P.tri(x - 3, base - h, x + w + 3, base - h, x + w / 2, base - h - w * 1.2, col);
+      for (let y = base - h + 10; y < base - 12; y += 16) if (R() < 0.6) { P.r(x + w / 2 - 1, y, 3, 5, '#b050f0'); P.p(x + w / 2, y + 1, '#ffd0ff'); }
+      if (R() < 0.6) P.r(x + w, base - h + 20, 5, 3, col);
+    };
+    [[0.06, 14, 70], [0.19, 10, 46], [0.42, 18, 92], [0.52, 12, 60], [0.71, 16, 78], [0.88, 10, 50]].forEach(([fx, w, h]) => spire(Math.round(fx * GW), w, h));
+    P.r(0, 232, GW, 40, '#0c0612');
+    for (let x = 0; x < GW; x += 5) if (R() < 0.7) P.r(x, 228 + (R() * 4 | 0), 3, 6, '#0c0612');
+  });
+  S('bg7_3', GW, GH, (P) => {
+    const col = '#06030a', R = rng(107);
+    const pillar = (x, h) => { P.r(x, 250 - h, 12, h, col); P.r(x - 2, 250 - h, 16, 4, col); for (let k = 0; k < 5; k++) P.p(x + (R() * 12 | 0), 250 - h - 1 - (R() * 3 | 0), col); };
+    wrapX(Math.round(GW * 0.15), x => pillar(x, 60)); wrapX(Math.round(GW * 0.66), x => pillar(x, 36));
+    wrapX(Math.round(GW * 0.42), x => { for (let y = 0; y < 64; y += 4) P.r(x, y, 2, 3, col); P.r(x - 3, 64, 8, 6, col); });
+    P.r(0, 250, GW, 20, col);
+  });
+  S('ground7', 32, 32, (P) => {
+    const R = rng(109); P.r(0, 0, 32, 32, '#1a1022');
+    for (let k = 0; k < 10; k++) { const x = R() * 28 | 0, y = 6 + R() * 22 | 0; P.r(x, y, 6, 4, '#24162e'); P.r(x, y, 6, 1, '#32203e'); }
+    P.line(6, 8, 11, 18, '#c040ff'); P.line(11, 18, 9, 26, '#8020c0'); P.p(12, 18, '#ffb0ff'); P.line(22, 12, 26, 20, '#8020c0');
+    P.r(0, 0, 32, 4, '#3a2a48'); P.r(0, 0, 32, 1, '#5a4670'); P.r(0, 4, 32, 1, '#0c0612');
+    P.r(5, 0, 3, 2, '#b050f0'); P.p(6, 0, '#ffd0ff'); P.r(24, 0, 2, 1, '#b050f0');
+    P.r(0, 26, 32, 6, 'rgba(0,0,0,.3)');
+  });
+  S('plat7', 32, 16, (P) => {
+    P.r(0, 1, 32, 9, '#2a1a36'); P.r(0, 1, 32, 2, '#4a3460'); P.r(0, 0, 32, 1, '#6a5088');
+    P.tri(2, 10, 30, 10, 16, 16, '#1a0e24'); P.tri(8, 10, 14, 10, 11, 15, '#9a40e0'); P.p(11, 12, '#ffc0ff'); P.tri(20, 10, 24, 10, 22, 14, '#7a30c0');
+    P.r(15, 3, 1, 6, '#1a0e24');
+  });
+
   // ===== TILES =====
   S('ground1', 32, 32, (P) => {
     const R = rng(11); P.r(0, 0, 32, 32, '#5a3a24');
@@ -1081,6 +1191,34 @@ function genProps(scene) {
   M('tuft', 10, 6, (P) => { P.line(1, 5, 2, 1, '#4f9a34'); P.line(4, 5, 4, 0, '#62b040'); P.line(7, 5, 8, 2, '#4f9a34'); P.p(4, 0, '#ffd23a'); });
   M('skull', 9, 8, (P) => { P.r(1, 1, 7, 5, '#d8d0b8'); P.r(2, 0, 5, 1, '#d8d0b8'); P.r(2, 2, 2, 2, '#120d16'); P.r(5, 2, 2, 2, '#120d16'); P.r(2, 6, 5, 1, '#a8a088'); P.p(3, 6, '#120d16'); P.p(5, 6, '#120d16'); });
   M('bones', 14, 6, (P) => { P.line(1, 4, 12, 1, '#d8d0b8', 2); P.line(2, 1, 11, 4, '#bdb39a', 2); P.p(0, 4, '#d8d0b8'); P.p(13, 0, '#d8d0b8'); });
+
+  // ----- Ato III e segredos -----
+  M('cultist', 28, 34, (P, i) => drawCultist(P, WALK_FRAMES[i]), 5);
+  M('gargoyle', 30, 26, (P, i) => drawGargoyle(P, i), 3);
+  M('chest', 22, 18, (P, i) => drawChest(P, i === 1, false), 2);
+  M('chestR', 22, 18, (P, i) => drawChest(P, i === 1, true), 2);
+  M('crackwall', 26, 44, (P) => {
+    P.r(0, 0, 26, 44, '#4a4452');
+    for (let y = 0; y < 44; y += 8) for (let x = (y / 8) % 2 ? -6 : 0; x < 26; x += 12) { P.r(x + 1, y + 1, 10, 6, '#5e5868'); P.r(x + 1, y + 1, 10, 1, '#7a7488'); }
+    P.line(13, 4, 9, 16, '#14101a'); P.line(9, 16, 15, 26, '#14101a'); P.line(15, 26, 11, 38, '#14101a'); P.line(9, 16, 4, 20, '#14101a'); P.line(15, 26, 21, 29, '#14101a');
+    P.p(12, 17, '#ffe080'); P.p(14, 27, '#ffe080'); P.p(10, 33, '#ffe080');
+  });
+  M('gem', 12, 12, (P) => { P.tri(6, 0, 0, 5, 12, 5, '#7affe8'); P.tri(0, 5, 12, 5, 6, 12, '#2ab8c8'); P.tri(6, 0, 3, 5, 9, 5, '#d8fff8'); P.p(4, 3, '#ffffff'); });
+  M('elixir', 12, 16, (P) => { P.r(4, 0, 4, 2, '#8a5a30'); P.r(4, 2, 4, 3, '#fff6c0'); P.ell(6, 10, 5, 5, '#c89010'); P.ell(6, 11, 4, 3, '#ffd23a'); P.p(4, 8, '#ffffff'); P.p(8, 12, '#fff6c0'); });
+  M('banner', 12, 16, (P) => { P.r(1, 0, 1, 16, '#8a5a30'); P.r(2, 1, 9, 10, '#2c55a8'); P.tri(2, 11, 11, 11, 6, 15, '#2c55a8'); P.r(5, 3, 3, 1, '#f5c542'); P.r(6, 2, 1, 6, '#f5c542'); P.r(0, 0, 3, 1, '#f5c542'); });
+  M('vcrystal', 12, 16, (P) => { P.tri(6, 0, 2, 16, 10, 16, '#9a40e0'); P.tri(6, 0, 6, 16, 10, 16, '#c070ff'); P.tri(2, 6, 0, 16, 4, 16, '#7a30c0'); P.tri(10, 8, 12, 16, 8, 16, '#7a30c0'); P.line(6, 2, 6, 12, '#ffd0ff'); });
+  M('dwave', 28, 14, (P) => { P.tri(0, 14, 5, 5, 10, 14, '#9a40e0'); P.tri(7, 14, 14, 0, 21, 14, '#e0a0ff'); P.tri(18, 14, 23, 5, 28, 14, '#9a40e0'); P.line(14, 2, 14, 12, '#ffffff'); });
+  // Rei Sombrio: cavaleiro coroado, desenhado em 40px e ampliado 2x (pixel art)
+  M('king_s', 40, 40, (P, i) => {
+    const f = KNIGHT_FRAMES[i], b = f.b || 0; drawKnight(P, f, PAL_KING);
+    P.r(13, 3 + b, 8, 2, '#ffd23a'); P.p(13, 2 + b, '#ffd23a'); P.p(16, 1 + b, '#ffd23a'); P.p(16, 2 + b, '#ffd23a'); P.p(20, 2 + b, '#ffd23a'); P.p(16, 3 + b, '#ff3a5a');
+  }, KNIGHT_FRAMES.length);
+  {
+    const src = scene.textures.get('king_s').getSourceImage(), n = KNIGHT_FRAMES.length;
+    const c = document.createElement('canvas'); c.width = 80 * n; c.height = 80;
+    const cx = c.getContext('2d'); cx.imageSmoothingEnabled = false; cx.drawImage(src, 0, 0, 80 * n, 80);
+    const tex = scene.textures.addCanvas('king', c); for (let i = 0; i < n; i++) tex.add(i, 0, i * 80, 0, 80, 80);
+  }
 
   // efeitos (sem contorno)
   makeSheet(scene, 'slash', 44, 44, 1, (P) => {
@@ -1192,6 +1330,9 @@ class BootScene extends Phaser.Scene {
     A('drg_fly', 'dragon', [0, 1, 2, 1], 8);
     A('coin', 'coin', [0, 1, 2, 3, 4, 5], 10);
     A('fb', 'fireball', [0, 1, 2], 14);
+    A('cult_walk', 'cultist', [0, 1, 2, 3], 6); A('cult_atk', 'cultist', [4, 4, 4], 8, 0);
+    A('garg_fly', 'gargoyle', [0, 1, 2, 1], 10);
+    A('king_idle', 'king', [0, 1], 3); A('king_walk', 'king', [2, 3, 4, 5], 8);
     { const ld = document.getElementById('loading'); if (ld) ld.remove(); }
     this.scene.start('Menu');
   }
@@ -1341,16 +1482,16 @@ class MenuScene extends Phaser.Scene {
     pg.lineStyle(1, 0xc9a040, 0.9).strokeRoundedRect(px - pw / 2, py, pw, ph, 5);
     pg.lineStyle(1, 0x5a3a10, 1).strokeRoundedRect(px - pw / 2 + 2, py + 2, pw - 4, ph - 4, 4);
     T(this, px, py + 10, 'CONTROLES', 8, '#f5c542', { title: true }).setOrigin(0.5);
-    const rows = [['← → / A D', 'Mover'], ['↑ W Espaço', 'Pular (2x)'], ['↓ / S', 'Abaixar'], ['Z / J', 'Espada'], ['X / K', 'Poder de fogo'], ['P / Esc', 'Pausar'], ['M', 'Som']];
+    const rows = [['← → / A D', 'Mover'], ['↑ W Espaço', 'Pular (2x)'], ['↓ / S', 'Abaixar'], ['Z / J', 'Espada'], ['X / K', 'Poder de fogo'], ['C / L', 'Aliado (2 por fase)'], ['P / Esc', 'Pausar'], ['M', 'Som']];
     rows.forEach(([k, v], i) => {
-      T(this, px - pw / 2 + 10, py + 22 + i * 12, k, 8, '#ffe9c0');
-      T(this, px + pw / 2 - 10, py + 22 + i * 12, v, 8, '#bfa880').setOrigin(1, 0);
+      T(this, px - pw / 2 + 10, py + 21 + i * 11, k, 8, '#ffe9c0');
+      T(this, px + pw / 2 - 10, py + 21 + i * 11, v, 8, '#bfa880').setOrigin(1, 0);
     });
 
     const best = Math.max(store.get('best', 0), ...Ranking.list().map(r => r.score), 0);
-    T(this, px, py + ph + 7, `8 fases · 4 chefes · Recorde: ${best}`, 8, '#cc9a60', { stroke: '#000', strokeThickness: 2 }).setOrigin(0.5);
+    T(this, px, py + ph + 7, `3 atos · 11 fases · 5 chefes · Recorde: ${best}`, 8, '#cc9a60', { stroke: '#000', strokeThickness: 2 }).setOrigin(0.5);
 
-    const start = () => goTo(this, 'Game', { level: 1, score: 0, lives: 3, coins: 0, up: newUp() });
+    const start = () => startRun(this);
     const btn = makeButton(this, px - 42, GH - 38, 96, 24, '▶  INICIAR', start);
     makeButton(this, px + 56, GH - 38, 88, 24, '🏆 PLACAR', () => goTo(this, 'Ranking', {}));
     this.tweens.add({ targets: btn.t, alpha: 0.75, duration: 700, yoyo: true, repeat: -1 });
@@ -1381,7 +1522,7 @@ class MenuScene extends Phaser.Scene {
     }
     if (IS_TOUCH) this.hint.setText('Toque em INICIAR · use o celular na horizontal');
     T(this, GW / 2, GH - 4, '© TODOS OS DIREITOS RESERVADOS A DARO GAMES', 6, '#d8b070', { title: true, stroke: '#000', strokeThickness: 3 }).setOrigin(0.5, 1);
-    T(this, 4, GH - 4, 'v4.2', 7, '#5a4040').setOrigin(0, 1);
+    T(this, 4, GH - 4, 'v5.1', 7, '#5a4040').setOrigin(0, 1);
     Music.play('menu');
   }
   update(time) {
@@ -1402,16 +1543,20 @@ const LEVELS = {
   5: { name: 'Trilha Congelada',    theme: 5, music: 'ice',     enemyTypes: ['wolf', 'golem', 'bat', 'wolf'], enemies: 12, platforms: 14, worldW: 2800, boss: null, ice: true },
   6: { name: 'Pico da Nevasca',     theme: 5, music: 'ice',     enemyTypes: ['wolf', 'golem', 'archer', 'wolf', 'bat'], enemies: 14, platforms: 15, worldW: 3000, boss: 'giant', ice: true, variant: 'storm', tint: 0xc8d4e8 },
   7: { name: 'Vila Assombrada',     theme: 6, music: 'ghost',   enemyTypes: ['zombie', 'ghost', 'zombie', 'bat'], enemies: 13, platforms: 14, worldW: 2900, boss: null },
-  8: { name: 'Catedral dos Espectros', theme: 6, music: 'ghost', enemyTypes: ['ghost', 'zombie', 'dark_knight', 'ghost', 'archer'], enemies: 15, platforms: 16, worldW: 3200, boss: 'queen', tint: 0xd8c8ff }
+  8: { name: 'Catedral dos Espectros', theme: 6, music: 'ghost', enemyTypes: ['ghost', 'zombie', 'dark_knight', 'ghost', 'archer'], enemies: 15, platforms: 16, worldW: 3200, boss: 'queen', tint: 0xd8c8ff },
+  9:  { name: 'Portões do Abismo',    theme: 7, music: 'abyss', enemyTypes: ['cultist', 'gargoyle', 'dark_knight', 'imp'], enemies: 14, platforms: 15, worldW: 3100, boss: null },
+  10: { name: 'Ruínas Flutuantes',    theme: 7, music: 'abyss', enemyTypes: ['gargoyle', 'cultist', 'ghost', 'dark_knight', 'gargoyle'], enemies: 15, platforms: 17, worldW: 3300, boss: null, gaps: 7, tint: 0xd8c0e8 },
+  11: { name: 'Trono do Rei Sombrio', theme: 7, music: 'abyss', enemyTypes: ['dark_knight', 'cultist', 'gargoyle', 'archer', 'cultist'], enemies: 15, platforms: 16, worldW: 3400, boss: 'king', tint: 0xffc8d8 }
 };
-const LAST_LEVEL = 8;
+const LAST_LEVEL = 11;
 const BG_LAYERS = {
   1: [['bg1_0', 0], ['bg1_1', 0.08], ['bg1_2', 0.25], ['bg1_3', 0.5]],
   2: [['bg2_0', 0], ['bg2_1', 0.12], ['bg2_2', 0.3], ['bg2_3', 0.6]],
   3: [['bg3_0', 0], ['bg3_1', 0.1], ['bg3_2', 0.32]],
   4: [['bg4_0', 0], ['bg4_1', 0.1], ['bg4_2', 0.3]],
   5: [['bg5_0', 0], ['bg5_1', 0.08], ['bg5_2', 0.25], ['bg5_3', 0.5]],
-  6: [['bg6_0', 0], ['bg6_1', 0.1], ['bg6_2', 0.3], ['bg6_3', 0.55]]
+  6: [['bg6_0', 0], ['bg6_1', 0.1], ['bg6_2', 0.3], ['bg6_3', 0.55]],
+  7: [['bg7_0', 0], ['bg7_1', 0.1], ['bg7_2', 0.3], ['bg7_3', 0.55]]
 };
 const ENEMY = {
   goblin:      { tex: 'goblin',   walk: 'gob_walk', atk: 'gob_atk',  hp: 2, spd: 52, pts: 30,  fw: 30, body: [12, 24, 9, 5],  fx: 'goo' },
@@ -1423,6 +1568,8 @@ const ENEMY = {
   ghost:       { tex: 'ghost',    walk: 'ghost_float', atk: 'ghost_float', hp: 2, spd: 50, pts: 70, fw: 24, body: [14, 16, 5, 4], fx: 'spirit', fly: true, ghost: true, alert: 'wail' },
   zombie:      { tex: 'zombie',   walk: 'zombie_walk', atk: 'zombie_atk', hp: 4, spd: 30, pts: 70, fw: 26, body: [10, 31, 9, 3], fx: 'goo', alert: 'groan' },
   bat:         { tex: 'bat',      walk: 'bat_fly',  atk: 'bat_fly',  hp: 1, spd: 75, pts: 40,  fw: 24, body: [14, 10, 5, 3],  fx: 'purple', fly: true },
+  cultist:     { tex: 'cultist',  walk: 'cult_walk', atk: 'cult_atk', hp: 3, spd: 28, pts: 90, fw: 28, body: [10, 28, 9, 5], fx: 'purple', ranged: true, proj: 'orb', projSpd: 150, every: 2.7, projY: -8, alert: 'orb' },
+  gargoyle:    { tex: 'gargoyle', walk: 'garg_fly', atk: 'garg_fly', hp: 3, spd: 80, pts: 90, fw: 30, body: [14, 14, 8, 6], fx: 'dust', fly: true },
   imp:         { tex: 'imp',      walk: 'imp_walk', atk: 'imp_atk',  hp: 3, spd: 72, pts: 70,  fw: 26, body: [12, 20, 7, 6],  fx: 'fire', jumper: true }
 };
 const UPGRADES = [
@@ -1437,9 +1584,10 @@ const SHOTS = {
   orb:     { tex: 'orb', w: 10, h: 9, glow: 0xb050ff, trail: [0xffffff, 0xc070ff, 0x300050] },
   arrow:   { tex: 'arrow', w: 12, h: 3, rot: true },
   shard:   { tex: 'shard', w: 10, h: 4, rot: true, glow: 0x8fe8ff },
-  boulder: { tex: 'boulder', w: 12, h: 12, grav: true, dmg: 2, life: 4000 },
+  boulder: { tex: 'boulder', w: 12, h: 12, grav: true, dmg: 1, life: 4000 },
   wave:    { tex: 'wave', w: 22, h: 10, glow: 0x8fe8ff, life: 3000 },
   icicle:  { tex: 'icicle', w: 6, h: 14, grav: true, life: 3000 },
+  dwave:   { tex: 'dwave', w: 22, h: 10, glow: 0xc040ff, life: 3000 },
   skull:   { tex: 'spskull', w: 10, h: 10, glow: 0xff7aaa, trail: [0xffffff, 0xbffcff, 0x30a0b0], life: 4500 }
 };
 const ICE_SHOTS = ['shard', 'boulder', 'wave', 'icicle'];
@@ -1456,15 +1604,17 @@ class GameScene extends Phaser.Scene {
     this.lvlNum = data.level || 1;
     this.prevScore = data.score || 0;
     this.lives = data.lives !== undefined ? data.lives : 3;
+    this.continues = data.continues !== undefined ? data.continues : MAX_CONTINUES; this.fromCp = !!data.fromCp;
     this.score = 0; this.atkCD = 0; this.invTime = 0; this.atkT = 0; this.stepT = 0;
     this.mobileInput = { left: false, right: false, jump: false, atk: false };
     this._mjLast = false; this.levelDone = false; this.dead = false; this._leaving = false;
     this.kills = 0; this.coins = 0; this.coinsPrev = data.coins || 0;
     this.up = Object.assign(newUp(), data.up || {});
-    this.mobileInput.down = false; this.mobileInput.fire = false;
+    this.mobileInput.down = false; this.mobileInput.fire = false; this.mobileInput.ally = false;
     this.maxEnergy = 3 + this.up.energy; this.energy = this.maxEnergy; this.energyT = 0;
     this.regenTime = 2.5 - 0.6 * this.up.regen; this.swordDmg = 1 + this.up.sword;
     this.crouching = false; this.spawnX = 60; this.cpActive = false; this.bossDying = false;
+    this.allyCharges = ALLY_PER_LEVEL; this.ally = null;
   }
 
   create() {
@@ -1483,8 +1633,14 @@ class GameScene extends Phaser.Scene {
     this._spawnPickups();
     this._makeGoal();
     this._makeCheckpoint();
+    this._makeSecrets();
 
-    this.player = this.physics.add.sprite(60, GH - 70, 'knight', 0).setDepth(5);
+    if (this.fromCp) {   // continue: retoma do ponto de controle já ativado
+      this.cpActive = true; this.spawnX = this.cpX;
+      this.cpFlag.play('cp_wave'); this.cpGlow.setAlpha(0.5);
+      this.tweens.add({ targets: this.cpGlow, alpha: 0.25, duration: 800, yoyo: true, repeat: -1 });
+    }
+    this.player = this.physics.add.sprite(this.spawnX, GH - 70, 'knight', 0).setDepth(5);
     this._setCrouch(false, true);
     this.player.setCollideWorldBounds(true).play('k_idle');
     this.maxHp = 5 + this.up.hp; this.hp = this.maxHp; this.jumpsLeft = 2; this.wasGround = false; this.lastVy = 0;
@@ -1498,7 +1654,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.enemies, this.platforms, null, e => !e.E.fly);
     this.physics.add.collider(this.pickups, this.platforms);
-    this.physics.add.collider(this.fireballs, this.platforms, fb => this._fbExplode(fb), fb => fb.kind !== 'wave');
+    this.physics.add.collider(this.fireballs, this.platforms, fb => this._fbExplode(fb), fb => fb.kind !== 'wave' && fb.kind !== 'dwave');
     this.physics.add.overlap(this.slashes, this.enemies, this._slashEnemy, null, this);
     this.physics.add.overlap(this.player, this.enemies, this._playerHitEnemy, null, this);
     this.physics.add.overlap(this.player, this.fireballs, this._playerHitFb, null, this);
@@ -1507,11 +1663,13 @@ class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.cpZone, () => this._checkpoint());
     this.physics.add.collider(this.pfires, this.platforms, pf => this._pfExplode(pf));
     this.physics.add.overlap(this.pfires, this.enemies, this._pfEnemy, null, this);
+    this.physics.add.overlap(this.slashes, this.secretWalls, (hb, w) => this._hitWall(w, hb));
+    this.physics.add.overlap(this.pfires, this.secretWalls, (pf, w) => this._hitWall(w, pf));
     this.physics.add.overlap(this.pfires, this.fireballs, (pf, fb) => { this._fbExplode(fb); this._pfExplode(pf); this.score += 5; });
     if (this.boss) {
       // Atenção: em overlap(grupo, sprite) o Phaser entrega (sprite, membroDoGrupo).
       // Por isso o sprite do chefe vem primeiro aqui — antes isso fazia o golpe nunca contar.
-      if (this.boss.kind === 'dragon' || this.boss.kind === 'giant') this.physics.add.collider(this.boss, this.platforms);
+      if (this.boss.kind === 'dragon' || this.boss.kind === 'giant' || this.boss.kind === 'king') this.physics.add.collider(this.boss, this.platforms);
       this.physics.add.overlap(this.boss, this.slashes, (boss, slash) => this._slashBoss(slash, boss));
       this.physics.add.overlap(this.boss, this.pfires, (boss, pf) => this._pfBoss(pf, boss));
       this.physics.add.overlap(this.player, this.boss, this._playerHitBoss, null, this);
@@ -1526,7 +1684,7 @@ class GameScene extends Phaser.Scene {
     cam.fadeIn(500, 0, 0, 0);
 
     this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = this.input.keyboard.addKeys({ w: 'W', a: 'A', s: 'S', d: 'D', z: 'Z', j: 'J', x: 'X', k: 'K', spc: Phaser.Input.Keyboard.KeyCodes.SPACE });
+    this.wasd = this.input.keyboard.addKeys({ w: 'W', a: 'A', s: 'S', d: 'D', z: 'Z', j: 'J', x: 'X', k: 'K', c: 'C', l: 'L', spc: Phaser.Input.Keyboard.KeyCodes.SPACE });
 
     Music.play(cfg.music);
     this.events.once('shutdown', () => this.scene.stop('UI'));
@@ -1541,8 +1699,9 @@ class GameScene extends Phaser.Scene {
     }));
     if (this.cfg.tint) this.bgLayers.forEach(l => l.ts.setTint(this.cfg.tint));
     this.fog = null;
-    if (th <= 2 || th === 6) this.fog = this.add.tileSprite(OFFX, OFFY + GH - 80, VW, 80, 'fog').setOrigin(0).setScrollFactor(0).setDepth(9).setAlpha(th === 1 ? 0.4 : th === 6 ? 0.55 : 0.3);
+    if (th <= 2 || th >= 6) this.fog = this.add.tileSprite(OFFX, OFFY + GH - 80, VW, 80, 'fog').setOrigin(0).setScrollFactor(0).setDepth(9).setAlpha(th === 1 ? 0.4 : th === 6 ? 0.55 : 0.3);
     if (th === 6) this.fog.setTint(0xa8ffc8);
+    if (th === 7) this.fog.setTint(0xc080ff).setAlpha(0.4);
 
     const WW = this.WW;
     if (th === 1) {
@@ -1574,6 +1733,12 @@ class GameScene extends Phaser.Scene {
         lifespan: { min: 3000, max: 5000 }, speed: { min: 4, max: 14 }, scale: { start: 0.6, end: 0.2 },
         alpha: { onEmit: () => 0, onUpdate: (p, k, t) => Math.sin(t * Math.PI) * 0.7 }, tint: 0x9affd8, blendMode: 'ADD', frequency: 200
       }).setDepth(4);
+    } else if (th === 7) {
+      this.add.particles(0, 0, 'soft', {
+        emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, GH - 40, WW, 30) },
+        lifespan: { min: 3000, max: 5500 }, speedY: { min: -30, max: -10 }, speedX: { min: -6, max: 6 }, scale: { start: 0.5, end: 0 },
+        alpha: { onEmit: () => 0, onUpdate: (p, k, t) => Math.sin(t * Math.PI) * 0.8 }, color: [0xffd0ff, 0xc060ff, 0x5010a0], blendMode: 'ADD', frequency: 90
+      }).setDepth(4);
     } else {
       if (th === 4) this.add.particles(0, 0, 'px', {
         emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(0, 0, WW, 10) },
@@ -1586,9 +1751,9 @@ class GameScene extends Phaser.Scene {
       }).setDepth(4);
     }
     // tochas
-    if (th === 2 || th === 3 || th === 6) {
-      const flame = th === 2 ? [0xe0fff4, 0x50f0c8, 0x10806a, 0x002020] : th === 6 ? [0xf0fff0, 0x9affb0, 0x2aa060, 0x002a10] : [0xfffbd0, 0xffb030, 0xff4a10, 0x501000];
-      const glowC = th === 2 ? 0x40e0c0 : th === 6 ? 0x6affa0 : 0xff8a30;
+    if (th === 2 || th === 3 || th >= 6) {
+      const flame = th === 2 ? [0xe0fff4, 0x50f0c8, 0x10806a, 0x002020] : th === 6 ? [0xf0fff0, 0x9affb0, 0x2aa060, 0x002a10] : th === 7 ? [0xffe0ff, 0xd070ff, 0x7020b0, 0x200030] : [0xfffbd0, 0xffb030, 0xff4a10, 0x501000];
+      const glowC = th === 2 ? 0x40e0c0 : th === 6 ? 0x6affa0 : th === 7 ? 0xb050ff : 0xff8a30;
       for (let x = 140; x < WW - 120; x += 230) {
         this.add.image(x, GH - 72, 'torch').setDepth(-2);
         const gl = this.add.image(x, GH - 82, 'glow').setTint(glowC).setBlendMode('ADD').setAlpha(0.5).setScale(1.5).setDepth(-2);
@@ -1618,7 +1783,7 @@ class GameScene extends Phaser.Scene {
   _buildLevel() {
     const TW = 32, groundY = GH - 16, th = this.cfg.theme, WW = this.WW;
     const gaps = [];
-    const nG = Math.min(this.lvlNum >= 2 ? this.lvlNum : 0, 5), sp = Math.floor((WW - 1100) / Math.max(1, nG));
+    const nG = this.cfg.gaps || Math.min(this.lvlNum >= 2 ? this.lvlNum : 0, 5), sp = Math.floor((WW - 1100) / Math.max(1, nG));
     for (let i = 0; i < nG; i++) gaps.push(450 + i * sp + Phaser.Math.Between(-30, 30));
     this.gaps = gaps;
     const inGap = x => gaps.some(gx => x >= gx - 48 && x <= gx + 48);
@@ -1626,7 +1791,7 @@ class GameScene extends Phaser.Scene {
     this.lavas = [];
     if (th >= 4) gaps.forEach(gx => {
       const x0 = Math.floor((gx - 48) / TW) * TW + TW, x1 = Math.floor((gx + 48) / TW) * TW + TW;
-      if (th === 6) { this.add.particles(0, 0, 'soft', { emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(x0, GH - 10, x1 - x0, 6) }, speedY: { min: -30, max: -10 }, lifespan: 1600, scale: { start: 0.9, end: 0.2 }, tint: 0x6affa0, alpha: { start: 0.35, end: 0 }, blendMode: 'ADD', frequency: 120 }).setDepth(-1); return; }
+      if (th >= 6) { this.add.particles(0, 0, 'soft', { emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(x0, GH - 10, x1 - x0, 6) }, speedY: { min: -30, max: -10 }, lifespan: 1600, scale: { start: 0.9, end: 0.2 }, tint: th === 7 ? 0xc060ff : 0x6affa0, alpha: { start: 0.35, end: 0 }, blendMode: 'ADD', frequency: 120 }).setDepth(-1); return; }
       const lv = this.add.tileSprite(x0 - 2, GH - 14, x1 - x0 + 4, 14, th === 4 ? 'lava' : 'water5', 0).setOrigin(0).setDepth(-1);
       this.lavas.push(lv);
       this.add.image((x0 + x1) / 2, GH - 10, 'glow').setTint(th === 4 ? 0xff6010 : 0x4aa0e0).setBlendMode('ADD').setAlpha(th === 4 ? 0.55 : 0.3).setScale((x1 - x0) / 40, 0.9).setDepth(-1);
@@ -1641,18 +1806,21 @@ class GameScene extends Phaser.Scene {
       else if (th === 2) key = Math.random() < 0.6 ? 'skull' : 'bones';
       else if (th === 5) key = Math.random() < 0.65 ? 'snowmound' : 'crystal';
       else if (th === 6) key = Math.random() < 0.7 ? 'tomb' : 'bones';
+      else if (th === 7) key = Math.random() < 0.55 ? 'vcrystal' : 'skull';
       else continue;
       const d = this.add.image(x, GH - 32, key, 0).setOrigin(0.5, 1).setDepth(-1);
+      if (key === 'vcrystal') this.add.image(x, GH - 40, 'glow').setTint(0xc060ff).setBlendMode('ADD').setAlpha(0.35).setScale(0.45).setDepth(-1);
       if (key === 'crystal') this.add.image(x, GH - 38, 'glow').setTint(0x6ad8ff).setBlendMode('ADD').setAlpha(0.35).setScale(0.4).setDepth(-1);
       if (key === 'mushroom') this.add.image(x, GH - 36, 'glow').setTint(0x3ad8c0).setBlendMode('ADD').setAlpha(0.35).setScale(0.35).setDepth(-1);
     }
 
     const heights = [GH - 80, GH - 115, GH - 150, GH - 185];
-    let px = 160;
+    let px = 160; this.platRects = [];
     for (let i = 0; i < this.cfg.platforms; i++) {
       const w = 3 + Phaser.Math.Between(0, 3);
       const py = heights[i % 4] + Phaser.Math.Between(-18, 18);
       for (let t = 0; t < w; t++) this.platforms.create(px + t * TW + TW / 2, py, 'plat' + th, 0).refreshBody();
+      this.platRects.push({ x: px, y: py, w: w * TW });
       this.add.image(px + w * TW / 2, py + 14, 'glow').setTint(0x000000).setAlpha(0.25).setScale(w * 0.55, 0.25).setDepth(-3);
       px += w * TW + Phaser.Math.Between(75, 170);
     }
@@ -1682,14 +1850,14 @@ class GameScene extends Phaser.Scene {
       const b = this.boss = this.physics.add.sprite(this.WW - 250, GH - 100, 'dragon', 0).setDepth(4);
       b.kind = 'dragon'; b.label = 'DRAGÃO DAS TREVAS'; b.short = 'Dragão'; b.dims = [100, 20, 60, 30];
       b.body.setSize(60, 40); face(b, true, 100, 20, 60, 30);
-      b.hp = 20; b.maxHp = 20; b.phase = 1; b.fireTimer = 1.5; b.breathT = 0; b.intro = false;
+      b.hp = 16; b.maxHp = 16; b.phase = 1; b.fireTimer = 1.5; b.breathT = 0; b.intro = false;
       b.setCollideWorldBounds(true).play('drg_fly');
       this.bossGlow = this.add.image(b.x, b.y, 'glow').setTint(0xff3010).setBlendMode('ADD').setAlpha(0).setScale(2.2).setDepth(3);
     } else if (kind === 'lich') {
       const b = this.boss = this.physics.add.sprite(this.WW - 260, GH - 120, 'lich', 0).setDepth(4);
       b.kind = 'lich'; b.label = 'REI LICH'; b.short = 'Rei Lich'; b.dims = [48, 12, 24, 10];
       b.body.setAllowGravity(false); b.body.setSize(24, 48); face(b, true, 48, 12, 24, 10);
-      b.hp = 26; b.maxHp = 26; b.phase = 1; b.intro = false; b.t = 0;
+      b.hp = 21; b.maxHp = 21; b.phase = 1; b.intro = false; b.t = 0;
       b.castT = 2; b.swoopT = 4.5; b.tpT = 7; b.sumT = 6; b.mode = 'float'; b.modeT = 0; b.castAnim = 0;
       b.play('lich_idle');
       this.bossGlow = this.add.image(b.x, b.y, 'glow').setTint(0x9a40ff).setBlendMode('ADD').setAlpha(0.35).setScale(1.8).setDepth(3);
@@ -1699,14 +1867,23 @@ class GameScene extends Phaser.Scene {
       const b = this.boss = this.physics.add.sprite(this.WW - 260, GH - 110, 'giant', 0).setDepth(4);
       b.kind = 'giant'; b.label = 'GIGANTE DE GELO'; b.short = 'Gigante de Gelo';
       b.body.setSize(40, 64); face(b, true, 84, 22, 40, 18);
-      b.hp = 30; b.maxHp = 30; b.phase = 1; b.intro = false; b.atkT = 2; b.icT = 1; b.atkAnim = 0; b.atkFrame = 0; b.state = 'walk'; b.airT = 0;
+      b.hp = 24; b.maxHp = 24; b.phase = 1; b.intro = false; b.atkT = 2; b.icT = 1; b.atkAnim = 0; b.atkFrame = 0; b.state = 'walk'; b.airT = 0;
       b.setCollideWorldBounds(true).play('giant_walk');
       this.bossGlow = this.add.image(b.x, b.y, 'glow').setTint(0x6ad8ff).setBlendMode('ADD').setAlpha(0.25).setScale(2.4).setDepth(3);
+    } else if (kind === 'king') {
+      const b = this.boss = this.physics.add.sprite(this.WW - 260, GH - 80, 'king', 0).setDepth(4);
+      b.kind = 'king'; b.label = 'MALAKAR, O REI SOMBRIO'; b.short = 'Rei Sombrio';
+      b.body.setSize(24, 62); face(b, true, 80, 22, 24, 14);
+      b.hp = 36; b.maxHp = 36; b.phase = 1; b.intro = false; b.state = 'walk'; b.actT = 1.5; b.stT = 0; b.sumT = 6;
+      b.setCollideWorldBounds(true).play('king_idle');
+      this.bossGlow = this.add.image(b.x, b.y, 'glow').setTint(0xc040ff).setBlendMode('ADD').setAlpha(0.3).setScale(2.6).setDepth(3);
+      this.lichAura = this.add.particles(0, 0, 'soft', { speedY: { min: -30, max: -10 }, speedX: { min: -14, max: 14 }, lifespan: 700, scale: { start: 0.8, end: 0 }, color: [0xffd0ff, 0xb040ff, 0x300050], blendMode: 'ADD', frequency: 45 }).setDepth(3);
+      this.lichAura.startFollow(b, 0, 30);
     } else if (kind === 'queen') {
       const b = this.boss = this.physics.add.sprite(this.WW - 260, GH - 130, 'queen', 0).setDepth(4);
       b.kind = 'queen'; b.label = 'RAINHA ESPECTRAL'; b.short = 'Rainha Espectral';
       b.body.setAllowGravity(false); b.body.setSize(24, 52); face(b, true, 56, 16, 24, 12);
-      b.hp = 34; b.maxHp = 34; b.phase = 1; b.intro = false; b.t = 0; b.castT = 2; b.vanT = 6; b.sumT = 5; b.ringT = 4;
+      b.hp = 27; b.maxHp = 27; b.phase = 1; b.intro = false; b.t = 0; b.castT = 2; b.vanT = 6; b.sumT = 5; b.ringT = 4;
       b.mode = 'float'; b.modeT = 0; b.castAnim = 0; b.invuln = false;
       b.setAlpha(0.92).play('queen_idle');
       this.bossGlow = this.add.image(b.x, b.y, 'glow').setTint(0xff7aaa).setBlendMode('ADD').setAlpha(0.3).setScale(2.1).setDepth(3);
@@ -1788,6 +1965,8 @@ class GameScene extends Phaser.Scene {
     this._updateEnemies(dt);
     this._updateShots(dt);
     if (this.boss && this.boss.active) this._updateBoss(dt);
+    if (this.ally) this._updateAlly(dt);
+    this._updateSecrets();
     if (this.player.y > GH + 40) this._die(true);
   }
 
@@ -1807,6 +1986,9 @@ class GameScene extends Phaser.Scene {
     const atk = Phaser.Input.Keyboard.JustDown(wasd.z) || Phaser.Input.Keyboard.JustDown(wasd.j) || mobileInput.atk;
     const fire = Phaser.Input.Keyboard.JustDown(wasd.x) || Phaser.Input.Keyboard.JustDown(wasd.k) || (mobileInput.fire && !this._mfLast);
     this._mfLast = mobileInput.fire;
+    const special = Phaser.Input.Keyboard.JustDown(wasd.c) || Phaser.Input.Keyboard.JustDown(wasd.l) || (mobileInput.ally && !this._maLast);
+    this._maLast = mobileInput.ally;
+    if (special) this._summonAlly();
     const down = cursors.down.isDown || wasd.s.isDown || mobileInput.down;
 
     // agachar (só no chão)
@@ -1893,6 +2075,98 @@ class GameScene extends Phaser.Scene {
     this._pfExplode(pf);
   }
 
+  // ---------- especial: cavaleiro aliado ----------
+  _summonAlly() {
+    const p = this.player;
+    if (this.ally || this.dead || this.levelDone) return;
+    if (this.allyCharges <= 0) { SFX.empty(); this._floatTxt(p.x, p.y - 26, 'Sem especial nesta fase!', '#ff9a60'); return; }
+    this.allyCharges--;
+    const dir = p.flipX ? -1 : 1, x = Phaser.Math.Clamp(p.x - dir * 26, 20, this.WW - 20);
+    const a = this.ally = this.physics.add.sprite(x, p.y - 60, 'knight', 0).setDepth(5).setTint(0xffd27a);
+    a.body.setSize(12, 31); face(a, dir < 0, 40, 11, 12, 7);
+    a.setCollideWorldBounds(true).setAlpha(0);
+    a.t = ALLY_TIME; a.atkCD = 0.4; a.atkT = 0; a.jumpCD = 0;
+    a.col = this.physics.add.collider(a, this.platforms);
+    a.glow = this.add.image(a.x, a.y, 'glow').setTint(0xffd060).setBlendMode('ADD').setAlpha(0.45).setScale(1.1).setDepth(4);
+    this.tweens.add({ targets: a, alpha: 1, duration: 250 });
+    this.cameras.main.flash(180, 255, 220, 120);
+    this.fx.magic.explode(24, x, p.y - 20); this.fx.gold.explode(16, x, p.y - 20);
+    SFX.summon(); this.time.delayedCall(120, () => SFX.clang());
+    this._floatTxt(x, p.y - 40, 'ALIADO!', '#ffd23a');
+    this._msg(`Um cavaleiro veio ajudar!  (restam ${this.allyCharges})`, '#ffd23a');
+  }
+  _allyTarget(a) {
+    let best = null, bd = 230;
+    this.enemies.getChildren().forEach(e => {
+      if (!e.active || e.ghostOut) return;
+      const d = Math.abs(e.x - a.x) + Math.abs(e.y - a.y) * 0.5;
+      if (d < bd && Math.abs(e.x - this.player.x) < 300) { bd = d; best = e; }
+    });
+    const b = this.boss;
+    if (b && b.active && b.intro && !this.bossDying && !b.invuln) {
+      const d = Math.abs(b.x - a.x);
+      if (!best || d < bd + 60) best = b;
+    }
+    return best;
+  }
+  _updateAlly(dt) {
+    const a = this.ally, p = this.player;
+    if (!a || !a.active) return;
+    a.t -= dt; a.atkCD -= dt; a.atkT -= dt; a.jumpCD -= dt;
+    if (a.t <= 0) { this._dismissAlly(); return; }
+    if (a.t < 1.5) a.setAlpha(Math.floor(a.t * 10) % 2 ? 0.5 : 1);   // pisca antes de ir embora
+    if (a.y > GH + 20 || Math.abs(a.x - p.x) > 380) {   // caiu ou ficou para trás: reaparece ao lado do herói
+      a.setPosition(p.x - (p.flipX ? -1 : 1) * 24, p.y - 10).setVelocity(0); this.fx.magic.explode(12, a.x, a.y);
+    }
+    a.glow.setPosition(a.x, a.y);
+    const ground = a.body.blocked.down, tgt = this._allyTarget(a);
+    let tx, close = false;
+    if (tgt) {
+      const side = a.x < tgt.x ? -1 : 1;
+      const reach = tgt === this.boss ? 26 : 18;
+      tx = tgt.x + side * reach;
+      close = Math.abs(tgt.x - a.x) < reach + 14 && Math.abs(tgt.y - a.y) < (tgt === this.boss ? 60 : 30);
+      if (close && a.atkCD <= 0) this._allyAttack(a, tgt.x > a.x ? 1 : -1);
+      if ((tgt.y < a.y - 28) && ground && a.jumpCD <= 0) { a.setVelocityY(-265); a.jumpCD = 0.8; }
+    } else tx = p.x - (p.flipX ? -1 : 1) * 30;
+    const dx = tx - a.x;
+    if (Math.abs(dx) > 6 && !(close && tgt)) {
+      a.setVelocityX(Phaser.Math.Clamp(dx * 4, -150, 150));
+      if ((dx < 0) !== a.flipX) face(a, dx < 0, 40, 11, 12, 7);
+      if (ground && (a.body.blocked.left || a.body.blocked.right) && a.jumpCD <= 0) { a.setVelocityY(-265); a.jumpCD = 0.6; }
+      if (!tgt && ground && p.y < a.y - 40 && a.jumpCD <= 0) { a.setVelocityY(-265); a.jumpCD = 0.8; }
+    } else a.setVelocityX(a.body.velocity.x * 0.7);
+    if (a.atkT <= 0) {
+      if (!ground) a.play(a.body.velocity.y < 0 ? 'k_jump' : 'k_fall', true);
+      else if (Math.abs(a.body.velocity.x) > 25) a.play('k_run', true);
+      else a.play('k_idle', true);
+    }
+  }
+  _allyAttack(a, dir) {
+    a.atkCD = 0.45; a.atkT = 0.2;
+    if ((dir < 0) !== a.flipX) face(a, dir < 0, 40, 11, 12, 7);
+    a.play('k_atk', true); SFX.swing();
+    this.time.delayedCall(45, () => {
+      if (!a.active) return;
+      const x = a.x + dir * 20, y = a.y + 2;
+      const vis = this.add.image(x, y, 'slash').setFlipX(dir < 0).setBlendMode('ADD').setDepth(6).setScale(0.8).setTint(0xffe080);
+      this.tweens.add({ targets: vis, alpha: 0, scale: 1.15, duration: 200, onComplete: () => vis.destroy() });
+      const hb = this.add.zone(x + dir * 2, y, 34, 32);
+      this.slashes.add(hb); hb.body.setAllowGravity(false);
+      hb.hit = new Set(); hb.dmg = this.swordDmg; hb.ox = a.x;
+      this.time.delayedCall(140, () => hb.destroy());
+    });
+  }
+  _dismissAlly() {
+    const a = this.ally; if (!a) return;
+    this.ally = null;
+    if (a.col) a.col.destroy();
+    this.fx.magic.explode(20, a.x, a.y); this.fx.gold.explode(10, a.x, a.y);
+    if (!this.levelDone && !this.dead) SFX.teleport();
+    a.body.enable = false;
+    this.tweens.add({ targets: [a, a.glow], alpha: 0, y: a.y - 14, duration: 350, onComplete: () => { a.glow.destroy(); a.destroy(); } });
+  }
+
   _doAttack() {
     const p = this.player, dir = p.flipX ? -1 : 1;
     this.atkCD = 0.42; this.atkT = 0.2;
@@ -1964,7 +2238,9 @@ class GameScene extends Phaser.Scene {
   _updateBoss(dt) {
     if (this.bossDying) return;
     const k = this.boss.kind;
-    if (k === 'lich') this._updateLich(dt); else if (k === 'giant') this._updateGiant(dt); else if (k === 'queen') this._updateQueen(dt); else this._updateDragon(dt);
+    if (k === 'lich') this._updateLich(dt); else if (k === 'giant') this._updateGiant(dt); else if (k === 'queen') this._updateQueen(dt); else if (k === 'king') this._updateKing(dt); else this._updateDragon(dt);
+    const b = this.boss;
+    if (b && b.intro && !b.talked && !this.dead) { b.talked = true; this.time.delayedCall(650, () => { if (!this.dead && !this.levelDone && this.boss) this._bossTalk(k); }); }
   }
 
   // Gigante de Gelo: pisões que soltam ondas de gelo no chão, arremesso de pedras e, na fase 2, estalactites
@@ -1989,7 +2265,7 @@ class GameScene extends Phaser.Scene {
     else b.setVelocityX(dir * (p2 ? 52 : 36));
     if (b.atkAnim > 0) { b.anims.stop(); b.setFrame(b.atkFrame); } else b.play('giant_walk', true);
     if (b.state === 'walk' && b.atkT <= 0 && b.body.blocked.down) {
-      b.atkT = p2 ? 2.1 : 3.0;
+      b.atkT = p2 ? 2.6 : 3.5;
       if (dist < 150 || Math.random() < 0.45) { b.state = 'jump'; b.airT = 0; b.setVelocity(dir * 40, -250); b.atkFrame = 2; b.atkAnim = 0.8; SFX.grunt(); }
       else {
         b.atkFrame = 3; b.atkAnim = 0.55;
@@ -2001,7 +2277,7 @@ class GameScene extends Phaser.Scene {
         });
       }
     }
-    if (p2 && b.icT <= 0) { b.icT = 1.0; const x = Phaser.Math.Clamp(p.x + Phaser.Math.Between(-90, 90), this.WW - 760, this.WW - 30); this.fx.ice.explode(4, x, 30); this._shoot(x, 26, 0, 40, 'icicle'); }
+    if (p2 && b.icT <= 0) { b.icT = 1.5; const x = Phaser.Math.Clamp(p.x + Phaser.Math.Between(-90, 90), this.WW - 760, this.WW - 30); this.fx.ice.explode(4, x, 30); this._shoot(x, 26, 0, 40, 'icicle'); }
     if (b.hp <= b.maxHp * 0.5 && b.phase === 1) {
       b.phase = 2; SFX.giantRoar(); this._msg('O GIGANTE ENFURECE! Cuidado com o teto!', '#8fd0f0');
       this.cameras.main.shake(500, 0.016); this.cameras.main.flash(250, 160, 220, 255);
@@ -2037,17 +2313,17 @@ class GameScene extends Phaser.Scene {
     }
     if (b.castAnim > 0) { b.anims.stop(); b.setFrame(2); } else b.play('queen_idle', true);
     if (b.mode === 'float' && b.castT <= 0) {
-      b.castT = p2 ? 1.9 : 2.7; b.castAnim = 0.5; SFX.wail();
-      const n = p2 ? 4 : 3, base = Math.atan2(p.y - (b.y - 26), p.x - b.x);
+      b.castT = p2 ? 2.3 : 3.2; b.castAnim = 0.5; SFX.wail();
+      const n = 3, base = Math.atan2(p.y - (b.y - 26), p.x - b.x);
       for (let i = 0; i < n; i++) { const a = base + (i - (n - 1) / 2) * 0.35; const sk = this._shoot(b.x + dir * 12, b.y - 26, Math.cos(a) * 115, Math.sin(a) * 115, 'skull'); sk.homeT = 0.9; }
     }
     if (b.mode === 'float' && b.vanT <= 0) {
-      b.vanT = p2 ? 5 : 7; b.mode = 'vanish'; b.modeT = 1.0; b.invuln = true; SFX.teleport();
+      b.vanT = p2 ? 6 : 8; b.mode = 'vanish'; b.modeT = 1.0; b.invuln = true; SFX.teleport();
       this.fx.spirit.explode(20, b.x, b.y); this.tweens.add({ targets: b, alpha: 0.1, duration: 250 });
     }
     if (p2 && b.mode === 'float' && b.ringT <= 0) {
-      b.ringT = 6.5; b.castAnim = 0.7; SFX.scream(); this.cameras.main.flash(150, 255, 120, 200);
-      for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2; this._shoot(b.x, b.y - 10, Math.cos(a) * 105, Math.sin(a) * 105, 'skull'); }
+      b.ringT = 8; b.castAnim = 0.7; SFX.scream(); this.cameras.main.flash(150, 255, 120, 200);
+      for (let i = 0; i < 8; i++) { const a = i / 8 * Math.PI * 2; this._shoot(b.x, b.y - 10, Math.cos(a) * 105, Math.sin(a) * 105, 'skull'); }
     }
     if (p2 && b.sumT <= 0 && this.enemies.countActive() < 7) { b.sumT = 9; SFX.summon(); b.castAnim = 0.6; [-34, 34].forEach(ox => this._spawnMinion('ghost', b.x + ox, b.y)); }
     if (b.hp <= b.maxHp * 0.5 && b.phase === 1) {
@@ -2097,12 +2373,12 @@ class GameScene extends Phaser.Scene {
 
     b.castT -= dt; b.swoopT -= dt; b.tpT -= dt; b.sumT -= dt;
     if (b.mode === 'float' && b.castT <= 0) {
-      b.castT = b.phase === 2 ? 1.7 : 2.6; b.castAnim = 0.5; SFX.orb();
-      const n = b.phase === 2 ? 5 : 3, spread = b.phase === 2 ? 0.5 : 0.28, spd = b.phase === 2 ? 150 : 125;
+      b.castT = b.phase === 2 ? 2.1 : 3.1; b.castAnim = 0.5; SFX.orb();
+      const n = b.phase === 2 ? 4 : 3, spread = b.phase === 2 ? 0.5 : 0.28, spd = b.phase === 2 ? 150 : 125;
       const base = Math.atan2(p.y - (b.y - 20), p.x - b.x);
       for (let i = 0; i < n; i++) { const a = base + (i - (n - 1) / 2) * (spread * 2 / Math.max(1, n - 1)); this._shoot(b.x + dir * 14, b.y - 22, Math.cos(a) * spd, Math.sin(a) * spd, 'orb'); }
     }
-    if (b.mode === 'float' && b.swoopT <= 0) { b.swoopT = b.phase === 2 ? 4 : 5.5; b.mode = 'swoop'; b.modeT = 1.6; SFX.summon(); }
+    if (b.mode === 'float' && b.swoopT <= 0) { b.swoopT = b.phase === 2 ? 5 : 6.5; b.mode = 'swoop'; b.modeT = 1.6; SFX.summon(); }
     if (b.phase === 2 && b.mode === 'float' && b.tpT <= 0) {
       b.tpT = 6.5; b.mode = 'tp'; SFX.teleport(); this.fx.purple.explode(20, b.x, b.y);
       b.setVelocity(0, 0);
@@ -2152,7 +2428,7 @@ class GameScene extends Phaser.Scene {
     else boss.play('drg_fly', true);
 
     boss.fireTimer -= dt;
-    const rate = boss.phase === 2 ? 1.35 : 2.5;
+    const rate = boss.phase === 2 ? 1.7 : 3.0;
     if (boss.fireTimer <= 0 && dist < 450) { boss.fireTimer = rate; this._shootFireball(); }
     if (boss.body.blocked.down && Math.random() < 0.004 * boss.phase) { boss.setVelocityY(-210); }
 
@@ -2199,7 +2475,7 @@ class GameScene extends Phaser.Scene {
       if (k === 'boulder' && !this.bossDying) { const x = fb.x, y = fb.y - 8; this.time.delayedCall(1, () => [-1, 1].forEach(d => this._shoot(x, y, d * 130, 0, 'shard'))); }
     }
     else if (k === 'skull') { this.fx.spirit.explode(10, fb.x, fb.y); SFX.fizzle(); }
-    else { (k === 'orb' ? this.fx.purple : this.fx.fire).explode(10, fb.x, fb.y); SFX.fizzle(); }
+    else { (k === 'orb' || k === 'dwave' ? this.fx.purple : this.fx.fire).explode(10, fb.x, fb.y); SFX.fizzle(); }
     fb.destroy();
   }
 
@@ -2210,7 +2486,7 @@ class GameScene extends Phaser.Scene {
     if (!enemy.active || slash.hit.has(enemy) || enemy.ghostOut) return;
     slash.hit.add(enemy);
     enemy.hp -= slash.dmg;
-    const kd = enemy.x > this.player.x ? 1 : -1;
+    const kd = enemy.x > (slash.ox !== undefined ? slash.ox : this.player.x) ? 1 : -1;
     enemy.setVelocityX(kd * 160).setVelocityY(-90); enemy.knock = 0.18;
     enemy.setTintFill(0xffffff); this.time.delayedCall(80, () => enemy.active && enemy.clearTint());
     this.fx.spark.explode(8, enemy.x - kd * 6, enemy.y);
@@ -2235,11 +2511,11 @@ class GameScene extends Phaser.Scene {
     if (boss.hp <= 0) this._killBoss();
   }
   _playerHitEnemy(player, enemy) { if (this.invTime > 0 || !enemy.active || this.dead || enemy.ghostOut) return; this._takeDamage(1, enemy.x); }
-  _playerHitBoss(player, boss) { if (this.invTime > 0 || !boss.active || this.dead || !boss.intro || boss.invuln) return; this._takeDamage(boss.phase, boss.x); }
+  _playerHitBoss(player, boss) { if (this.invTime > 0 || !boss.active || this.dead || !boss.intro || boss.invuln) return; this._takeDamage(1, boss.x); }
   _playerHitFb(player, fb) { if (this.invTime > 0 || this.dead) return; const x = fb.x, d = fb.dmg || 1; this._fbExplode(fb); this._takeDamage(d, x); }
 
   _pickup(player, item) {
-    if (!item.active) return;
+    if (!item.active || (item.readyAt && this.time.now < item.readyAt)) return;
     if (item.ptype === 'coin') {
       this.score += 5; this.coins++; SFX.coin(); this.fx.gold.explode(8, item.x, item.y);
       this._floatTxt(item.x, item.y - 6, '+5', '#ffd23a');
@@ -2258,18 +2534,20 @@ class GameScene extends Phaser.Scene {
       if (!this._warnT || this.time.now - this._warnT > 2500) { this._warnT = this.time.now; this._msg(`Derrote ${this.boss.kind === 'queen' ? 'a' : 'o'} ${this.boss.short} primeiro!`, '#ff5a3a'); }
       return;
     }
-    this.levelDone = true;
+    this.levelDone = true; this._dismissAlly();
     const total = this.prevScore + this.score;
     Music.stop(); SFX.levelDone();
     this.player.setVelocity(0).play('k_idle');
     this.player.body.setAllowGravity(false);
     this.fx.magic.explode(30, this.player.x, this.player.y);
     this.tweens.add({ targets: this.player, alpha: 0, scale: 0.4, y: this.player.y - 10, duration: 700, delay: 200 });
-    this._msg(`FASE ${this.lvlNum} COMPLETA!  +${this.score}`, '#5affd8');
+    this._msg(`FASE ${this.lvlNum} COMPLETA!  +${this.score}` + (this.secretsTotal ? `  ·  Segredos ${this.secretsFound}/${this.secretsTotal}` : ''), '#5affd8');
     this.time.delayedCall(1900, () => {
-      const run = { level: this.lvlNum + 1, score: total, lives: this.lives, coins: this.coinsPrev + this.coins, up: this.up };
-      if (this.lvlNum < LAST_LEVEL) goTo(this, 'Shop', run);
-      else goTo(this, 'Victory', { score: total, level: LAST_LEVEL, win: true });
+      const run = { level: this.lvlNum + 1, score: total, lives: this.lives, coins: this.coinsPrev + this.coins, up: this.up, continues: this.continues };
+      const act = { 4: 'act2', 8: 'act3' }[this.lvlNum];
+      if (this.lvlNum >= LAST_LEVEL) goTo(this, 'Story', { id: 'ending', next: 'Victory', data: { score: total, level: LAST_LEVEL, win: true } });
+      else if (act) goTo(this, 'Story', { id: act, next: 'Shop', data: run });
+      else goTo(this, 'Shop', run);
     });
   }
 
@@ -2288,6 +2566,7 @@ class GameScene extends Phaser.Scene {
   _die(fell) {
     if (this.dead) return;
     this.dead = true; this.lives--; this.hp = 0;
+    this._dismissAlly();
     const p = this.player;
     SFX.hurt(); this.time.delayedCall(150, () => SFX.kill());
     this.cameras.main.shake(300, 0.012); this.cameras.main.flash(250, 150, 0, 0);
@@ -2295,10 +2574,13 @@ class GameScene extends Phaser.Scene {
     else if (this.cfg.theme === 4) { this.fx.fire.explode(30, p.x, GH - 12); SFX.fire(); }
     else if (this.cfg.theme === 5) { this.fx.ice.explode(24, p.x, GH - 12); SFX.crack(); }
     else if (this.cfg.theme === 6) { this.fx.spirit.explode(20, p.x, GH - 12); SFX.wail(); }
+    else if (this.cfg.theme === 7) { this.fx.purple.explode(24, p.x, GH - 12); SFX.wail(); }
     p.setVisible(false); p.body.enable = false;
     if (this.lives <= 0) {
       Music.stop();
-      this.time.delayedCall(1000, () => goTo(this, 'GameOver', { score: this.prevScore + this.score, level: this.lvlNum }));
+      // continue: refaz a fase a partir do checkpoint (ou do início), com a pontuação e as moedas do começo da fase
+      const cont = this.continues > 0 ? { level: this.lvlNum, score: this.prevScore, lives: 3, coins: this.coinsPrev, up: this.up, continues: this.continues - 1, fromCp: this.cpActive } : null;
+      this.time.delayedCall(1000, () => goTo(this, 'GameOver', { score: this.prevScore + this.score, level: this.lvlNum, cont }));
     } else {
       this._msg(`VIDA PERDIDA!  Restam ${this.lives}`, '#ff8888');
       this.time.delayedCall(1100, () => {
@@ -2327,14 +2609,14 @@ class GameScene extends Phaser.Scene {
   _killBoss() {
     const b = this.boss, bx = b.x, by = b.y, k = b.kind;
     if (this.bossDying) return;
-    const bonus = { dragon: 500, lich: 800, giant: 900, queen: 1200 }[k] || 500;
+    const bonus = { dragon: 500, lich: 800, giant: 900, queen: 1200, king: 2500 }[k] || 500;
     this.score += bonus;
     b.body.enable = false; b.anims.stop(); b.setVelocity(0, 0); b.invuln = false;
     this.bossDying = true;
     this.tweens.killTweensOf(this.bossGlow); this.tweens.killTweensOf(b); b.setAlpha(1);
     this.fireballs.getChildren().slice().forEach(fb => this._fbExplode(fb));
-    const fxA = k === 'lich' ? this.fx.purple : k === 'queen' ? this.fx.spirit : k === 'giant' ? this.fx.ice : this.fx.fire;
-    const fl = { dragon: [255, 200, 120], lich: [255, 200, 255], giant: [200, 240, 255], queen: [255, 220, 240] }[k] || [255, 255, 255];
+    const fxA = (k === 'lich' || k === 'king') ? this.fx.purple : k === 'queen' ? this.fx.spirit : k === 'giant' ? this.fx.ice : this.fx.fire;
+    const fl = { dragon: [255, 200, 120], lich: [255, 200, 255], giant: [200, 240, 255], queen: [255, 220, 240], king: [230, 180, 255] }[k] || [255, 255, 255];
     for (let i = 0; i < 7; i++) this.time.delayedCall(i * 160, () => {
       const x = bx + Phaser.Math.Between(-30, 30), y = by + Phaser.Math.Between(-25, 25);
       fxA.explode(16, x, y); this.fx.spark.explode(8, x, y); SFX.pop(); this.cameras.main.shake(120, 0.008);
@@ -2345,10 +2627,213 @@ class GameScene extends Phaser.Scene {
       this._floatTxt(bx, by - 40, `+${bonus} CHEFE!`, '#ff5a3a');
       if (this.lichAura) this.lichAura.stop();
       b.destroy(); this.bossGlow.destroy(); this.boss = null; this.bossDying = false;
-      this._msg(`${b.label} DERROTAD${k === 'queen' ? 'A' : 'O'}! Vá para a saída!`, '#ffd23a');
+      this._msg(`${k === 'king' ? 'MALAKAR' : b.label} DERROTAD${k === 'queen' ? 'A' : 'O'}! Vá para a saída!`, '#ffd23a');
       Music.play(this.cfg.music);
     });
     this.tweens.add({ targets: b, alpha: 0.3, duration: 1100 });
+  }
+
+  // ---------- baús e segredos ----------
+  _makeSecrets() {
+    const WW = this.WW, TW = 32, th = this.cfg.theme;
+    this.chestList = []; this.secretsTotal = 0; this.secretsFound = 0; this.rareIdx = 0;
+    this.secretWalls = this.physics.add.group({ allowGravity: false, immovable: true });
+    const limit = this.cfg.boss ? WW - 820 : WW - 200;
+    const mkChest = (x, y, rare, hidden) => {
+      const c = this.add.sprite(x, y, rare ? 'chestR' : 'chest', 0).setOrigin(0.5, 1).setDepth(2);
+      c.rare = rare; c.opened = false;
+      c.glow = this.add.image(x, y - 9, 'glow').setTint(rare ? 0xd070ff : 0xffd23a).setBlendMode('ADD').setAlpha(0.3).setScale(0.6).setDepth(1);
+      this.tweens.add({ targets: c.glow, alpha: 0.12, duration: 800, yoyo: true, repeat: -1 });
+      if (hidden) { c.setVisible(false); c.glow.setVisible(false); }
+      this.chestList.push(c); return c;
+    };
+    // 1) baú comum sobre uma plataforma
+    const pr = this.platRects.filter(r => r.x + r.w < limit);
+    if (pr.length) { const r = pr[Math.floor(pr.length * 0.4)]; mkChest(r.x + r.w - 18, r.y - 8, false); }
+    // 2) parede rachada: quebre com a espada para achar uma passagem secreta com um baú raro
+    let wx = Math.round(WW * 0.3 / TW) * TW + 16;
+    const bad = x => this.gaps.some(g => Math.abs(g - x) < 80) || Math.abs(x - this.cpX) < 70;
+    while (bad(wx) && wx < limit) wx += 40;
+    if (wx < limit) {
+      this.secretsTotal++;
+      const alc = this.add.graphics().setDepth(0); alc.fillStyle(0x000000, 0.55).fillRoundedRect(wx - 15, GH - 78, 30, 46, { tl: 12, tr: 12, bl: 0, br: 0 });
+      const ch = mkChest(wx, GH - 32, true, true);
+      const img = this.add.image(wx, GH - 32, 'crackwall').setOrigin(0.5, 1).setDepth(1);
+      if (th === 7) img.setTint(0xc8b0e0); else if (th === 5) img.setTint(0xd0e4f4); else if (th === 4) img.setTint(0xe8b0a0);
+      const hint = this.add.image(wx, GH - 54, 'glow').setTint(0xffe080).setBlendMode('ADD').setAlpha(0.12).setScale(0.6).setDepth(1);
+      this.tweens.add({ targets: hint, alpha: 0.04, duration: 900, yoyo: true, repeat: -1 });
+      const z = this.add.zone(wx, GH - 54, 26, 44); this.secretWalls.add(z); z.body.setAllowGravity(false);
+      z.hp = 3; z.img = img; z.hint = hint; z.chest = ch; z.alc = alc;
+    }
+    // 3) plataforma invisível: aparece quando o herói pula perto dela; em cima, outro baú raro
+    let best = null, bs = 0;
+    for (let i = 0; i < this.platRects.length - 1; i++) {
+      const a = this.platRects[i], b = this.platRects[i + 1], s = b.x - (a.x + a.w);
+      if (a.x > 300 && b.x < limit && s > bs) { bs = s; best = a.x + a.w + s / 2; }
+    }
+    if (best && bs >= 90) {
+      this.secretsTotal++;
+      const y = GH - 140, tiles = [];
+      for (let t = 0; t < 2; t++) tiles.push(this.platforms.create(best - 16 + t * TW, y, 'plat' + th, 0).refreshBody().setAlpha(0));
+      const ch = mkChest(best, y - 8, true, false); ch.setAlpha(0); ch.glow.setAlpha(0);
+      const tw = this.add.particles(best, y - 10, 'px', { emitZone: { type: 'random', source: new Phaser.Geom.Rectangle(-28, -16, 56, 24) }, lifespan: 900, scale: { start: 0.8, end: 0 }, tint: 0xffe8a0, alpha: { start: 0.5, end: 0 }, blendMode: 'ADD', frequency: 700 }).setDepth(2);
+      this.ledge = { x: best, y, tiles, chest: ch, twinkle: tw, shown: false };
+    }
+  }
+  _secretFound(x, y, label) {
+    this.secretsFound++;
+    SFX.secret(); this.fx.magic.explode(24, x, y); this.fx.gold.explode(12, x, y);
+    this._floatTxt(x, y - 18, label, '#ffe080');
+    this._msg(`SEGREDO ENCONTRADO! (${this.secretsFound}/${this.secretsTotal})`, '#ffe080');
+  }
+  _updateSecrets() {
+    const p = this.player, L = this.ledge;
+    if (L && !L.shown && Math.abs(p.x - L.x) < 80 && p.y < L.y + 45) {
+      L.shown = true; L.twinkle.stop();
+      this.tweens.add({ targets: L.tiles, alpha: 1, duration: 400 });
+      this.tweens.add({ targets: L.chest, alpha: 1, duration: 400 }); this.tweens.add({ targets: L.chest.glow, alpha: 0.3, duration: 400 });
+      this._secretFound(L.x, L.y - 20, 'PLATAFORMA OCULTA!');
+    }
+    this.chestList.forEach(c => {
+      if (c.opened || !c.visible || c.alpha < 0.5) return;
+      if (Math.abs(p.x - c.x) < 16 && Math.abs(p.y - (c.y - 9)) < 26) this._openChest(c);
+    });
+  }
+  _hitWall(w, hb) {
+    if (w.broken || !w.active || (hb.hit && hb.hit.has(w))) return;
+    if (hb.hit) hb.hit.add(w); else if (hb.hitDone) return; else { hb.hitDone = true; this._pfExplode(hb); }
+    w.hp--; SFX.crack(); this.fx.dust.explode(8, w.x, w.y); this.cameras.main.shake(80, 0.004);
+    w.img.setTintFill(0xffffff); this.time.delayedCall(70, () => { if (!w.broken) { w.img.clearTint(); const th = this.cfg.theme; if (th === 7) w.img.setTint(0xc8b0e0); else if (th === 5) w.img.setTint(0xd0e4f4); else if (th === 4) w.img.setTint(0xe8b0a0); } });
+    if (w.hp > 0) return;
+    w.broken = true; SFX.stomp(); this.cameras.main.shake(200, 0.008);
+    this.fx.bone.explode(24, w.x, w.y); this.fx.dust.explode(20, w.x, w.y + 10);
+    this.tweens.add({ targets: [w.img, w.hint], alpha: 0, duration: 300, onComplete: () => { w.img.destroy(); w.hint.destroy(); } });
+    w.chest.setVisible(true); w.chest.glow.setVisible(true);
+    w.destroy();
+    this._secretFound(w.x, w.y - 10, 'PASSAGEM SECRETA!');
+  }
+  _openChest(c) {
+    c.opened = true; c.setFrame(1); SFX.chest();
+    this.tweens.killTweensOf(c.glow); c.glow.setAlpha(0.6); this.tweens.add({ targets: c.glow, alpha: 0, scale: 1.4, duration: 900 });
+    this.fx.gold.explode(20, c.x, c.y - 12); this.fx.spark.explode(8, c.x, c.y - 12);
+    const n = c.rare ? 5 : Phaser.Math.Between(7, 10);
+    for (let i = 0; i < n; i++) this._dropCoin(c.x, c.y - 14);
+    if (!c.rare) {
+      this.score += 100; this._floatTxt(c.x, c.y - 26, 'BAÚ! +100', '#ffd23a');
+      if (Math.random() < 0.4) this._dropPotion(c.x, c.y - 16);
+      return;
+    }
+    this.score += 250;
+    const kinds = ['gem', 'elixir', 'ally', 'life'], k = kinds[(this.lvlNum + this.rareIdx++) % kinds.length];
+    const R = {
+      gem:    { tex: 'gem',       name: 'GEMA DO ABISMO: +15 moedas', col: '#7affe8' },
+      elixir: { tex: 'elixir',    name: 'ELIXIR DOURADO: vida cheia e invencível!', col: '#ffd23a' },
+      ally:   { tex: 'banner',    name: 'ESTANDARTE REAL: +1 aliado nesta fase', col: '#8ab8ff' },
+      life:   { tex: 'shieldIco', name: 'ESCUDO ANCESTRAL: +1 vida', col: '#cfe0ff' }
+    }[k];
+    if (k === 'gem') this.coins += 15;
+    else if (k === 'elixir') { this.hp = this.maxHp; this.energy = this.maxEnergy; this.invTime = 6; this.fx.heal.explode(20, this.player.x, this.player.y); }
+    else if (k === 'ally') this.allyCharges++;
+    else this.lives++;
+    const ic = this.add.image(c.x, c.y - 14, R.tex, 0).setDepth(14).setScale(0.5);
+    const gl = this.add.image(c.x, c.y - 14, 'glow').setTint(0xffffff).setBlendMode('ADD').setAlpha(0.6).setDepth(13);
+    this.tweens.add({ targets: [ic, gl], y: c.y - 50, duration: 700, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: ic, scale: 2, duration: 700, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: [ic, gl], alpha: 0, delay: 1500, duration: 400, onComplete: () => { ic.destroy(); gl.destroy(); } });
+    SFX.potion();
+    this._msg(R.name, R.col);
+  }
+  _dropCoin(x, y) {
+    const c = this.physics.add.sprite(x, y, 'coin', 0).setDepth(3);
+    this.pickups.add(c); c.ptype = 'coin'; c.play('coin'); c.readyAt = this.time.now + 350;
+    c.setVelocity(Phaser.Math.Between(-90, 90), Phaser.Math.Between(-230, -150)).setBounce(0.45).setDragX(40);
+    this.time.delayedCall(10000, () => { if (c.active) this.tweens.add({ targets: c, alpha: 0, duration: 400, onComplete: () => c.destroy() }); });
+  }
+  _dropPotion(x, y) {
+    const p = this.physics.add.sprite(x, y, 'potion', 0).setDepth(3);
+    this.pickups.add(p); p.ptype = 'health'; p.readyAt = this.time.now + 350; p.setVelocity(Phaser.Math.Between(-40, 40), -200).setBounce(0.3);
+  }
+
+  // ---------- chefe final: Rei Sombrio Malakar ----------
+  _updateKing(dt) {
+    const b = this.boss, p = this.player, dist = Math.abs(p.x - b.x);
+    this.bossGlow.setPosition(b.x, b.y);
+    if (!b.intro && dist < 300) {
+      b.intro = true; SFX.laugh(); this.cameras.main.shake(600, 0.012); this.cameras.main.flash(300, 120, 20, 160);
+      Music.play('king'); this._msg('O REI SOMBRIO SE LEVANTA DO TRONO!', '#d070ff');
+    }
+    if (!b.intro) return;
+    const dir = p.x > b.x ? 1 : -1, p2 = b.phase === 2, ground = b.body.blocked.down;
+    const look = (d) => { if ((d < 0) !== b.flipX) face(b, d < 0, 80, 22, 24, 14); };
+    const pose = fr => { b.anims.stop(); b.setFrame(fr); };
+    b.actT -= dt; b.stT -= dt; b.sumT -= dt;
+    switch (b.state) {
+      case 'walk': {
+        look(dir); b.setVelocityX(dir * (p2 ? 60 : 44)); b.play('king_walk', true);
+        if (b.actT <= 0 && ground) {
+          const r = Math.random();
+          if (dist < 80) this._kingDo(b, 'windup', 0.45);
+          else if (r < 0.38) this._kingDo(b, 'dashPrep', 0.65);
+          else if (r < 0.72) { this._kingDo(b, 'air', 0); b.setVelocity(Phaser.Math.Clamp((p.x - b.x) * 1.3, -260, 260), -330); SFX.grunt(); }
+          else this._kingDo(b, p2 ? 'beam' : 'windup', 0.5);
+        }
+        break;
+      }
+      case 'windup': b.setVelocityX(0); look(dir); pose(8); if (b.stT <= 0) this._kingSlash(b); break;
+      case 'slash': b.setVelocityX(0); if (b.stT <= 0) this._kingDo(b, 'recover', 0.5); break;
+      case 'dashPrep':
+        b.setVelocityX(0); look(dir); pose(11); b.dashDir = dir;
+        if (Math.random() < 0.3) this.fx.purple.explode(1, b.x + Phaser.Math.Between(-16, 16), b.y + 36);
+        if (b.stT <= 0) { this._kingDo(b, 'dash', 0.85); SFX.summon(); this.cameras.main.shake(150, 0.006); }
+        break;
+      case 'dash':
+        look(b.dashDir); pose(9); b.setVelocityX(b.dashDir * (p2 ? 320 : 280));
+        if (Math.random() < 0.6) this.fx.purple.explode(2, b.x - b.dashDir * 20, b.y + 10);
+        if (b.stT <= 0 || b.body.blocked.left || b.body.blocked.right) this._kingDo(b, 'recover', 0.6);
+        break;
+      case 'air':
+        pose(6); look(b.body.velocity.x < 0 ? -1 : 1);
+        if (ground && b.stT < -0.2) {
+          SFX.stomp(); this.cameras.main.shake(350, 0.016); this.fx.purple.explode(20, b.x, b.y + 36); this.fx.dust.explode(14, b.x, b.y + 36);
+          const sp = p2 ? 190 : 160; [-1, 1].forEach(d => this._shoot(b.x + d * 30, GH - 39, d * sp, 0, 'dwave'));
+          b.setVelocityX(0); this._kingDo(b, 'recover', 0.55);
+        }
+        break;
+      case 'beam':
+        b.setVelocityX(0); look(dir); pose(8);
+        if (b.stT <= 0) {
+          pose(9); SFX.orb(); SFX.swing();
+          const base = Math.atan2(p.y - (b.y - 10), p.x - b.x);
+          [-0.25, 0, 0.25].forEach(o => this._shoot(b.x + dir * 30, b.y - 10, Math.cos(base + o) * 165, Math.sin(base + o) * 165, 'orb'));
+          this._kingDo(b, 'recover', 0.6);
+        }
+        break;
+      case 'recover': b.setVelocityX(b.body.velocity.x * 0.8); pose(0); if (b.stT <= 0) { b.state = 'walk'; b.actT = p2 ? 1.3 : 1.9; } break;
+    }
+    if (p2 && b.sumT <= 0 && this.enemies.countActive() < 6 && b.state === 'walk') {
+      b.sumT = 10; SFX.summon(); this.fx.purple.explode(20, b.x, b.y);
+      this._spawnMinion('gargoyle', b.x - 40, b.y - 30); this._spawnMinion('cultist', Phaser.Math.Clamp(b.x + dir * 60, this.WW - 740, this.WW - 40), GH - 60);
+    }
+    if (b.hp <= b.maxHp * 0.5 && b.phase === 1) {
+      b.phase = 2; b.sumT = 2; SFX.laugh();
+      this._msg('MALAKAR LIBERA O PODER DO ABISMO!', '#d070ff');
+      this.cameras.main.shake(500, 0.016); this.cameras.main.flash(300, 160, 60, 220);
+      this.tweens.add({ targets: this.bossGlow, alpha: 0.65, duration: 450, yoyo: true, repeat: -1 });
+    }
+  }
+  _kingDo(b, st, t) { b.state = st; b.stT = t; if (st === 'windup' || st === 'beam') { b.setTintFill(0xffffff); this.time.delayedCall(80, () => b.active && b.clearTint()); } }
+  _kingSlash(b) {
+    const dir = b.flipX ? -1 : 1, x = b.x + dir * 44, y = b.y + 8, p = this.player;
+    b.anims.stop(); b.setFrame(10); SFX.swing(); this.cameras.main.shake(120, 0.006);
+    const vis = this.add.image(x, y, 'slash').setFlipX(dir < 0).setBlendMode('ADD').setDepth(6).setScale(1.7).setTint(0xd070ff);
+    this.tweens.add({ targets: vis, alpha: 0, scale: 2.1, duration: 260, onComplete: () => vis.destroy() });
+    if (Math.abs(p.x - x) < 40 && Math.abs(p.y - y) < 46) this._takeDamage(1, b.x);
+    this._kingDo(b, 'slash', 0.25);
+  }
+  _bossTalk(kind) {
+    const lines = BOSS_TALK[kind], ui = this.scene.get('UI');
+    if (!lines || !ui || !ui.dialog) return;
+    ui.dialog(lines);
   }
 
   // ---------- utilidades ----------
@@ -2387,6 +2872,9 @@ class UIScene extends Phaser.Scene {
     this.flames = [];
     for (let i = 0; i < g.maxEnergy; i++) this.flames.push(this.add.image(this.flameX + i * 10, 10, 'flameIco', 0));
     this.energyBar = this.add.graphics();
+    const ax = this.flameX + g.maxEnergy * 10 + 8;
+    this.allyIco = this.add.image(ax, 10, 'knight', 0).setScale(0.42).setTint(0xffd27a);
+    this.allyTxt = T(this, ax + 7, 10, 'x2', 9, '#ffd23a').setOrigin(0, 0.5);
 
     T(this, GW / 2 + 22, 10, `FASE ${g.lvlNum}`, 9, '#f5c542', { stroke: '#000', strokeThickness: 2 }).setOrigin(0.5);
     this.add.sprite(GW - 128, 10, 'coin', 0).play('coin');
@@ -2406,7 +2894,7 @@ class UIScene extends Phaser.Scene {
     this.bossDims = { bx, bw, by }; this.bossShown = 1;
 
     // banner inicial
-    const b1 = T(this, GW / 2, GH / 2 - 14, `FASE ${g.lvlNum}`, 12, '#e8b860', { stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0);
+    const b1 = T(this, GW / 2, GH / 2 - 14, `ATO ${ROMAN[actOf(g.lvlNum)]}  ·  FASE ${g.lvlNum}`, 12, '#e8b860', { stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0);
     const b2 = T(this, GW / 2, GH / 2 + 6, g.cfg.name, 20, '#ffd23a', { title: true, stroke: '#2a0a04', strokeThickness: 5, shadow: { offsetX: 0, offsetY: 3, color: '#000', fill: true, stroke: true } }).setOrigin(0.5).setAlpha(0);
     this.tweens.add({ targets: [b1, b2], alpha: 1, duration: 400, delay: 300 });
     this.tweens.add({ targets: [b1, b2], alpha: 0, duration: 500, delay: 2300, onComplete: () => { b1.destroy(); b2.destroy(); } });
@@ -2417,7 +2905,7 @@ class UIScene extends Phaser.Scene {
     this.pauseUI.add([pg, T(this, GW / 2, GH / 2 - 8, 'PAUSADO', 22, '#ffd23a', { title: true, stroke: '#000', strokeThickness: 5 }).setOrigin(0.5),
       T(this, GW / 2, GH / 2 + 16, 'P / Esc para continuar', 9, '#e8dcc0').setOrigin(0.5)]);
     const togglePause = this.togglePause = () => {
-      if (g.levelDone || g.dead) return;
+      if (g.levelDone || g.dead || g.inDialog) return;
       if (this.scene.isPaused('Game')) { this.scene.resume('Game'); this.pauseUI.setVisible(false); AudioSys.duck(false); }
       else { this.scene.pause('Game'); this.pauseUI.setVisible(true); AudioSys.duck(true); }
       SFX.pause();
@@ -2471,9 +2959,9 @@ class UIScene extends Phaser.Scene {
 
     const cx = GW - SIDE / 2;
     const btns = panels ? [
-      { x: cx - 13, y: GH - 38, k: 'jump', lbl: '▲' }, { x: cx + 13, y: GH - 82, k: 'atk', lbl: '⚔' }, { x: cx - 9, y: GH - 128, k: 'fire', lbl: '🔥' }
+      { x: cx - 13, y: GH - 38, k: 'jump', lbl: '▲' }, { x: cx + 13, y: GH - 82, k: 'atk', lbl: '⚔' }, { x: cx - 9, y: GH - 128, k: 'fire', lbl: '🔥' }, { x: cx + 11, y: GH - 172, k: 'ally', lbl: '🛡' }
     ] : [
-      { x: GW - 80, y: GH - 30, k: 'jump', lbl: '▲' }, { x: GW - 30, y: GH - 34, k: 'atk', lbl: '⚔' }, { x: GW - 56, y: GH - 80, k: 'fire', lbl: '🔥' }
+      { x: GW - 80, y: GH - 30, k: 'jump', lbl: '▲' }, { x: GW - 30, y: GH - 34, k: 'atk', lbl: '⚔' }, { x: GW - 56, y: GH - 80, k: 'fire', lbl: '🔥' }, { x: GW - 26, y: GH - 112, k: 'ally', lbl: '🛡' }
     ];
     const br = panels ? 18 : 21;
     btns.forEach(b => {
@@ -2488,6 +2976,52 @@ class UIScene extends Phaser.Scene {
     addFsButton(this, GW / 2 - 52, 10, false);
   }
 
+  // Diálogo com retrato (antes dos chefes): pausa o jogo até o jogador avançar
+  dialog(lines, done) {
+    const g = this.g; if (!lines || !lines.length) return;
+    g.inDialog = true; try { g.cameras.main.resetFX(); } catch (e) {} this.scene.pause('Game');
+    Object.keys(g.mobileInput).forEach(k => g.mobileInput[k] = false); if (this._joyRelease) this._joyRelease();
+    const x0 = SIDE + 10, w = GW - SIDE * 2 - 20, y0 = GH - 76, h = 64;
+    const c = this.add.container(0, 0).setDepth(70);
+    const dim = this.add.graphics(); dim.fillStyle(0x000000, 0.35).fillRect(0, 0, GW, GH);
+    const box = this.add.graphics();
+    box.fillStyle(0x07040a, 0.92).fillRoundedRect(x0, y0, w, h, 6);
+    box.lineStyle(1, 0xc9a040).strokeRoundedRect(x0, y0, w, h, 6); box.lineStyle(1, 0x5a3a10).strokeRoundedRect(x0 + 2, y0 + 2, w - 4, h - 4, 5);
+    box.fillStyle(0x1a1018, 1).fillRect(x0 + 7, y0 + 7, 50, 50); box.lineStyle(1, 0xc9a040, 0.8).strokeRect(x0 + 7, y0 + 7, 50, 50);
+    const por = this.add.sprite(x0 + 32, y0 + 32, 'knight', 0);
+    const name = T(this, x0 + 64, y0 + 7, '', 7, '#f5c542', { title: true });
+    const txt = T(this, x0 + 64, y0 + 19, '', 9, '#ffe9c0', { wordWrap: { width: w - 76, useAdvancedWrap: true }, lineSpacing: 1 });
+    const arrow = T(this, x0 + w - 10, y0 + h - 8, '▼', 8, '#f5c542').setOrigin(0.5);
+    const hit = this.add.zone(0, 0, GW, GH).setOrigin(0).setInteractive();
+    c.add([dim, box, por, name, txt, arrow, hit]);
+    let i = -1, n = 0, full = '', typing = false, ev = null;
+    const finish = () => { if (ev) ev.remove(); txt.setText(full); typing = false; arrow.setVisible(true); };
+    const show = () => {
+      const [key, who, line] = lines[i];
+      por.setTexture(key, 0).setFlipX(key !== 'knight');
+      const sc = Math.min(46 / por.width, 46 / por.height, 1.4); por.setScale(sc);
+      name.setText(who); name.setColor(key === 'knight' ? '#8ab8ff' : '#ff7a6a');
+      full = line; n = 0; txt.setText(''); typing = true; arrow.setVisible(false);
+      ev = this.time.addEvent({ delay: 24, loop: true, callback: () => { n++; txt.setText(full.slice(0, n)); if (n % 3 === 0) SFX.type(); if (n >= full.length) finish(); } });
+    };
+    const keys = ['ENTER', 'SPACE', 'Z', 'J'];
+    const next = () => {
+      if (typing) { finish(); return; }
+      i++;
+      if (i < lines.length) { SFX.click(); show(); return; }
+      keys.forEach(k => this.input.keyboard.off('keydown-' + k, next));
+      c.destroy(); g.inDialog = false;
+      this.scene.resume('Game');
+      try { g.input.keyboard.resetKeys(); } catch (e) {}
+      Object.keys(g.mobileInput).forEach(k => g.mobileInput[k] = false);
+      g.invTime = Math.max(g.invTime, 1);
+      if (done) done();
+    };
+    hit.on('pointerdown', next);
+    keys.forEach(k => this.input.keyboard.on('keydown-' + k, next));
+    next();
+  }
+
   msg(txt, color = '#ffffff') {
     const m = T(this, GW / 2, GH / 2 - 40, txt, 12, color, { fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setScale(0.6).setAlpha(0);
     this.tweens.add({ targets: m, scale: 1, alpha: 1, duration: 220, ease: 'Back.easeOut' });
@@ -2499,6 +3033,7 @@ class UIScene extends Phaser.Scene {
     this.hearts.forEach((h, i) => h.setFrame(i < g.hp ? 0 : 1));
     if (g.hp === 1 && !g.dead) this.hearts[0].setScale(1 + 0.15 * Math.abs(Math.sin(this.time.now / 180))); else this.hearts[0].setScale(1);
     this.livesTxt.setText('x' + g.lives);
+    this.allyTxt.setText('x' + g.allyCharges); this.allyIco.setAlpha(g.ally ? 0.5 + 0.5 * Math.abs(Math.sin(this.time.now / 150)) : (g.allyCharges > 0 ? 1 : 0.35));
     this.flames.forEach((f, i) => f.setFrame(i < g.energy ? 0 : 1));
     this.energyBar.clear();
     if (g.energy < g.maxEnergy) { const x = this.flameX - 4 + g.energy * 10; this.energyBar.fillStyle(0x000000, 0.6).fillRect(x, 17, 9, 2); this.energyBar.fillStyle(0xffa030).fillRect(x, 17, 9 * Math.min(1, g.energyT / g.regenTime), 2); }
@@ -2603,7 +3138,7 @@ class RankingScene extends Phaser.Scene {
     });
     const back = () => goTo(this, 'Menu');
     makeButton(this, GW / 2 - 60, GH - 22, 104, 22, 'MENU', back);
-    makeButton(this, GW / 2 + 60, GH - 22, 104, 22, '▶ JOGAR', () => goTo(this, 'Game', { level: 1, score: 0, lives: 3, coins: 0, up: newUp() }));
+    makeButton(this, GW / 2 + 60, GH - 22, 104, 22, '▶ JOGAR', () => startRun(this));
     this.input.keyboard.on('keydown-ESC', back);
     addMuteButton(this, GW - 12, 12);
     Music.play('menu');
@@ -2615,7 +3150,7 @@ class RankingScene extends Phaser.Scene {
 // =============================================================
 class ShopScene extends Phaser.Scene {
   constructor() { super('Shop'); }
-  init(run) { this.run = run; this.run.up = Object.assign(newUp(), run.up || {}); this._leaving = false; this.sel = 0; }
+  init(run) { this.run = run; this.run.up = Object.assign(newUp(), run.up || {}); this._leaving = false; this.sel = 0; this.bought = 0; }
   create() {
     fixedCam(this).fadeIn(500);
     this.add.image(GW / 2, GH / 2, 'bg2_0');
@@ -2649,9 +3184,10 @@ class ShopScene extends Phaser.Scene {
       this.cards.push(c);
     });
 
+    this.buysTxt = T(this, GW / 2 + 54, 54, '', 7, '#8ab8ff').setOrigin(0, 0.5);
     this.statusTxt = T(this, GW / 2, 202, '', 8, '#cfe0ff', { stroke: '#000', strokeThickness: 2 }).setOrigin(0.5);
     T(this, GW / 2, 215, '← → escolher · Enter comprar · Espaço continuar', 7, '#a89070').setOrigin(0.5);
-    const go = () => { const r = this.run; goTo(this, 'Game', { level: r.level, score: r.score, lives: r.lives, coins: r.coins, up: r.up }); };
+    const go = () => { const r = this.run; goTo(this, 'Game', { level: r.level, score: r.score, lives: r.lives, coins: r.coins, up: r.up, continues: r.continues }); };
     makeButton(this, GW / 2, GH - 22, 150, 22, `CONTINUAR ▶ FASE ${this.run.level}`, go);
     this.input.keyboard.on('keydown-LEFT', () => { this.sel = (this.sel + UPGRADES.length - 1) % UPGRADES.length; SFX.hover(); this._draw(); });
     this.input.keyboard.on('keydown-RIGHT', () => { this.sel = (this.sel + 1) % UPGRADES.length; SFX.hover(); this._draw(); });
@@ -2666,12 +3202,14 @@ class ShopScene extends Phaser.Scene {
   _maxed(u) { return u.id === 'life' ? this.run.lives >= u.max : this.run.up[u.id] >= u.max; }
   _buy() {
     const c = this.cards[this.sel], u = c.u;
+    if (this.bought >= SHOP_MAX_BUYS) { SFX.empty(); this._status(`Limite de ${SHOP_MAX_BUYS} melhorias por visita. Siga para a próxima fase!`, '#ff9a60'); return; }
     if (this._maxed(u)) { SFX.empty(); this._status('Este item já está no máximo.', '#ff9a60'); return; }
     const pr = this._price(u);
     if (this.run.coins < pr) { SFX.empty(); this._status(`Faltam ${pr - this.run.coins} moedas.`, '#ff9a60'); this.tweens.add({ targets: this.coinTxt, x: this.coinTxt.x + 3, duration: 50, yoyo: true, repeat: 3 }); return; }
     this.run.coins -= pr;
     if (u.id === 'life') this.run.lives++; else this.run.up[u.id]++;
-    SFX.buy(); this._status(`${u.name} comprado!`, '#5affd8');
+    this.bought++;
+    SFX.buy(); this._status(this.bought >= SHOP_MAX_BUYS ? `${u.name} comprado! Limite desta visita atingido.` : `${u.name} comprado! Você pode levar mais ${SHOP_MAX_BUYS - this.bought}.`, '#5affd8');
     const p = this.add.particles(0, 0, 'px', { emitting: false, speed: { min: 30, max: 90 }, lifespan: 500, scale: { start: 1.2, end: 0 }, tint: [0xffd23a, 0xfff6c0], blendMode: 'ADD' });
     p.explode(24, c.x + c.w / 2, c.y + 20);
     this._draw();
@@ -2679,8 +3217,10 @@ class ShopScene extends Phaser.Scene {
   _status(t, col) { this.statusTxt.setText(t).setColor(col); }
   _draw() {
     this.coinTxt.setText(String(this.run.coins));
+    const left = SHOP_MAX_BUYS - this.bought;
+    this.buysTxt.setText(left > 0 ? `Melhorias restantes nesta visita: ${left}` : 'Limite de melhorias atingido').setColor(left > 0 ? '#8ab8ff' : '#ff9a60');
     this.cards.forEach((c, i) => {
-      const u = c.u, sel = i === this.sel, maxed = this._maxed(u), pr = this._price(u), can = !maxed && this.run.coins >= pr;
+      const u = c.u, sel = i === this.sel, maxed = this._maxed(u), pr = this._price(u), can = !maxed && this.run.coins >= pr && left > 0;
       c.g.clear();
       c.g.fillStyle(0x0a0508, 0.85).fillRoundedRect(c.x, c.y, c.w, c.h, 5);
       c.g.lineStyle(sel ? 2 : 1, sel ? 0xffd23a : 0x6a4a20).strokeRoundedRect(c.x, c.y, c.w, c.h, 5);
@@ -2697,7 +3237,7 @@ class ShopScene extends Phaser.Scene {
 // =============================================================
 class GameOverScene extends Phaser.Scene {
   constructor() { super('GameOver'); }
-  init(d) { this.finalScore = d.score || 0; this.lvl = d.level || 1; this._leaving = false; }
+  init(d) { this.finalScore = d.score || 0; this.lvl = d.level || 1; this.cont = d.cont || null; this._leaving = false; }
   create() {
     fixedCam(this).fadeIn(700);
     const bg = this.add.graphics();
@@ -2714,6 +3254,39 @@ class GameOverScene extends Phaser.Scene {
     const t = T(this, GW / 2, 60, 'GAME OVER', 34, '#e8202f', { title: true, stroke: '#1a0004', strokeThickness: 8, shadow: { offsetX: 0, offsetY: 4, color: '#000', fill: true, stroke: true } }).setOrigin(0.5).setScale(2).setAlpha(0);
     this.tweens.add({ targets: t, scale: 1, alpha: 1, duration: 700, ease: 'Bounce.easeOut' });
     T(this, GW / 2, 98, `O herói caiu na fase ${this.lvl}...`, 9, '#b09090').setOrigin(0.5);
+    addMuteButton(this, GW - 12, 12);
+    Music.stop(); this.time.delayedCall(300, () => SFX.gameOver());
+    if (this.cont) this._askContinue(); else this._final();
+  }
+
+  // Tela de "CONTINUAR?" com contagem regressiva estilo fliperama
+  _askContinue() {
+    const c = this.cont, box = this.add.container(0, 0).setDepth(20);
+    const g = this.add.graphics(); g.fillStyle(0x0a0508, 0.85).fillRoundedRect(GW / 2 - 130, 106, 260, 108, 6); g.lineStyle(1, 0xc9a040).strokeRoundedRect(GW / 2 - 130, 106, 260, 108, 6);
+    const q = T(this, GW / 2, 120, 'CONTINUAR?', 16, '#ffd23a', { title: true, stroke: '#2a0a04', strokeThickness: 4 }).setOrigin(0.5);
+    const where = c.fromCp ? 'do último checkpoint' : 'do início da fase';
+    const info = T(this, GW / 2, 137, `Volta ${where} (fase ${this.lvl}) com 3 vidas`, 8, '#e8dcc0').setOrigin(0.5);
+    const rest = T(this, GW / 2, 149, `Continues restantes: ${c.continues}`, 7, '#bfa880').setOrigin(0.5);
+    let n = 10;
+    const num = T(this, GW / 2, 170, String(n), 22, '#ffffff', { title: true, stroke: '#000', strokeThickness: 5 }).setOrigin(0.5);
+    box.add([g, q, info, rest, num]);
+    let done = false;
+    const close = () => { done = true; tick.remove(); this.input.keyboard.off('keydown-ENTER', yes); this.input.keyboard.off('keydown-ESC', no); };
+    const yes = () => { if (done) return; close(); SFX.checkpoint(); goTo(this, 'Game', c); };
+    const no = () => { if (done) return; close(); box.destroy(); b1.g.destroy(); b1.t.destroy(); b1.zone.destroy(); b2.g.destroy(); b2.t.destroy(); b2.zone.destroy(); this._final(); };
+    const b1 = makeButton(this, GW / 2 - 56, 199, 100, 22, '▶ CONTINUAR', yes);
+    const b2 = makeButton(this, GW / 2 + 56, 199, 92, 22, 'DESISTIR', no);
+    [b1.g, b1.t, b2.g, b2.t].forEach(o => o.setDepth(21)); b1.zone.setDepth(22); b2.zone.setDepth(22);
+    this.tweens.add({ targets: b1.t, alpha: 0.7, duration: 500, yoyo: true, repeat: -1 });
+    this.input.keyboard.on('keydown-ENTER', yes); this.input.keyboard.on('keydown-ESC', no);
+    const tick = this.time.addEvent({ delay: 1000, repeat: 9, callback: () => {
+      n--; num.setText(String(n)); num.setScale(1.4); this.tweens.add({ targets: num, scale: 1, duration: 250 });
+      SFX.click && SFX.click();
+      if (n <= 0) this.time.delayedCall(400, no);
+    } });
+  }
+
+  _final() {
     const best = Math.max(store.get('best', 0), this.finalScore); store.set('best', best);
     T(this, GW / 2, 124, `Pontuação: ${this.finalScore}`, 14, '#ffd23a', { stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
     T(this, GW / 2, 142, `Recorde: ${best}`, 9, '#cc9a60').setOrigin(0.5);
@@ -2721,8 +3294,6 @@ class GameOverScene extends Phaser.Scene {
     makeButton(this, GW / 2 - 64, 178, 120, 22, 'TENTAR DE NOVO', go);
     makeButton(this, GW / 2 + 64, 178, 100, 22, '🏆 PLACAR', () => goTo(this, 'Ranking', {}));
     this.input.keyboard.on('keydown-ENTER', go);
-    addMuteButton(this, GW - 12, 12);
-    Music.stop(); this.time.delayedCall(300, () => SFX.gameOver());
     offerRanking(this, this.finalScore, this.lvl, false);
   }
 }
@@ -2754,11 +3325,11 @@ class VictoryScene extends Phaser.Scene {
     const t = T(this, GW / 2, 38, 'VITÓRIA!', 32, '#ffd700', { title: true, stroke: '#2a0a04', strokeThickness: 7, shadow: { offsetX: 0, offsetY: 4, color: '#000', fill: true, stroke: true } }).setOrigin(0.5);
     const grd = t.context.createLinearGradient(0, 0, 0, t.height); grd.addColorStop(0, '#fff6c0'); grd.addColorStop(0.5, '#ffc93a'); grd.addColorStop(1, '#c46a10'); t.setFill(grd);
     this.tweens.add({ targets: t, scale: 1.06, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    T(this, GW / 2, 66, 'Dragão, Rei Lich, Gigante de Gelo e Rainha Espectral derrotados! O reino está salvo!', 9, '#ffe9c0', { stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
+    T(this, GW / 2, 66, 'Os quatro generais e o Rei Sombrio foram derrotados! Aurora está salva!', 9, '#ffe9c0', { stroke: '#000', strokeThickness: 3 }).setOrigin(0.5);
 
     const score = this.finalScore;
     const best = Math.max(store.get('best', 0), score); store.set('best', best);
-    const [grade, gColor] = score >= 10000 ? ['S', '#ff4a4a'] : score >= 7000 ? ['A', '#ffd23a'] : score >= 4500 ? ['B', '#9ab0ff'] : ['C', '#8ad08a'];
+    const [grade, gColor] = score >= 16000 ? ['S', '#ff4a4a'] : score >= 11000 ? ['A', '#ffd23a'] : score >= 7000 ? ['B', '#9ab0ff'] : ['C', '#8ad08a'];
     const pg = this.add.graphics(); pg.fillStyle(0x000000, 0.6).fillRoundedRect(GW / 2 - 110, 80, 220, 54, 5); pg.lineStyle(1, 0xc9a040).strokeRoundedRect(GW / 2 - 110, 80, 220, 54, 5);
     T(this, GW / 2 - 96, 90, `Pontuação final: ${score}`, 11, '#ffd23a');
     T(this, GW / 2 - 96, 108, `Recorde: ${best}`, 9, '#cc9a60');
@@ -2779,6 +3350,117 @@ class VictoryScene extends Phaser.Scene {
 // =============================================================
 // INICIALIZAÇÃO
 // =============================================================
+// =============================================================
+// HISTÓRIA — cenas entre os atos e falas dos chefes
+// =============================================================
+const ACT_NAMES = { 1: 'A Sombra Desperta', 2: 'O Inverno dos Mortos', 3: 'O Coração do Abismo' };
+const actOf = l => (l <= 4 ? 1 : l <= 8 ? 2 : 3);
+const ROMAN = ['', 'I', 'II', 'III'];
+// cast: [chave da textura, frame, posição x (0–1), escala, virado para a esquerda]
+const STORY = {
+  intro: [
+    { bg: 3, cast: [['knight', 0, 0.3, 2]], text: 'Há muito tempo, o Reino de Aurora vivia em paz, protegido pela Ordem dos Cavaleiros.' },
+    { bg: 7, cast: [['king', 0, 0.62, 1.3, true]], text: 'Até que Malakar, o campeão do rei, abriu os Portões do Abismo em busca de poder eterno.' },
+    { bg: 7, cast: [['dragon', 0, 0.2, 0.6], ['lich', 0, 0.42, 0.7, true], ['giant', 0, 0.62, 0.55, true], ['queen', 0, 0.82, 0.6, true]], text: 'Corrompido pelas trevas, ele se coroou Rei Sombrio e enviou quatro generais para dominar o reino.' },
+    { bg: 1, cast: [['knight', 0, 0.3, 2]], text: 'Você é o último cavaleiro da Ordem. A jornada começa na Floresta Sombria. Que a luz o guie!' },
+    { bg: 1, title: 1 }
+  ],
+  act2: [
+    { bg: 4, cast: [['knight', 0, 0.3, 2]], text: 'Com o Dragão e o Rei Lich derrotados, o sul de Aurora volta a ver o sol.' },
+    { bg: 5, cast: [['knight', 0, 0.3, 2]], text: 'Mas um mensageiro chega ferido: o norte foi tomado por um inverno eterno... e pelos mortos que não descansam.' },
+    { bg: 5, title: 2 }
+  ],
+  act3: [
+    { bg: 6, cast: [['queen', 0, 0.7, 0.8, true]], text: 'A Rainha Espectral se desfaz em luz. Antes de sumir, ela revela: Malakar espera no coração do Abismo.' },
+    { bg: 7, cast: [['knight', 0, 0.3, 2]], text: 'Os Portões do Abismo se abrem. Do outro lado, ruínas flutuam num céu sem estrelas.' },
+    { bg: 7, title: 3 }
+  ],
+  ending: [
+    { bg: 7, cast: [['king', 0, 0.65, 1.3, true]], text: 'Com um último golpe, a armadura de Malakar se parte. A luz roxa do Abismo se apaga.' },
+    { bg: 7, cast: [['knight', 0, 0.3, 2], ['king', 11, 0.68, 1.3, true]], who: 'MALAKAR', text: '...Obrigado, cavaleiro. Eu tinha esquecido... como era a luz.' },
+    { bg: 1, cast: [['knight', 0, 0.5, 2]], text: 'Os Portões se fecham para sempre, e o sol nasce sobre Aurora pela primeira vez em muitos anos.' },
+    { bg: 1, cast: [['knight', 0, 0.5, 2]], text: 'A Ordem dos Cavaleiros renasce. E o seu nome será cantado por gerações.' }
+  ]
+};
+const BOSS_TALK = {
+  dragon: [['dragon', 'DRAGÃO DAS TREVAS', 'Mais um cavaleiro tolo... O Rei Sombrio me deu este castelo. Você vai virar cinzas!'], ['knight', 'CAVALEIRO', 'Já enfrentei sombras piores. Prepare-se, besta!']],
+  lich: [['lich', 'REI LICH', 'Eu servia aos reis antes de você nascer. Agora sirvo ao Abismo, e minha magia não tem fim.'], ['knight', 'CAVALEIRO', 'Então vou pôr fim a ela!']],
+  giant: [['giant', 'GIGANTE DE GELO', 'Pequeno... homem... NINGUÉM... passa... pelo... PICO!'], ['knight', 'CAVALEIRO', 'Quanto maior o gigante, maior a queda.']],
+  queen: [['queen', 'RAINHA ESPECTRAL', 'Malakar me prometeu a eternidade. Junte-se ao meu coro de almas, cavaleiro...'], ['knight', 'CAVALEIRO', 'Sua eternidade termina agora!']],
+  king: [['king', 'MALAKAR, O REI SOMBRIO', 'Então você é o último da Ordem. Eu também já carreguei esse escudo... e descobri que a luz é fraca.'], ['knight', 'CAVALEIRO', 'A luz que você abandonou ainda me guia. Hoje isso acaba, Malakar!']]
+};
+function startRun(scene) {
+  goTo(scene, 'Story', { id: 'intro', next: 'Game', data: { level: 1, score: 0, lives: 3, coins: 0, up: newUp() } });
+}
+
+class StoryScene extends Phaser.Scene {
+  constructor() { super('Story'); }
+  init(d) { this.pages = STORY[d.id] || []; this.nextKey = d.next; this.nextData = d.data; this.i = -1; this._leaving = false; this.typing = false; }
+  create() {
+    fixedCam(this).fadeIn(600);
+    this.stage = this.add.container(0, 0);
+    const bx = 16, bw = GW - 32, by = 12, bh = 70;
+    this.box = this.add.container(0, 0).setDepth(10);
+    const g = this.add.graphics();
+    g.fillStyle(0x07040a, 0.86).fillRoundedRect(bx, by, bw, bh, 6);
+    g.lineStyle(1, 0xc9a040).strokeRoundedRect(bx, by, bw, bh, 6); g.lineStyle(1, 0x5a3a10).strokeRoundedRect(bx + 2, by + 2, bw - 4, bh - 4, 5);
+    this.who = T(this, bx + 12, by + 7, '', 7, '#f5c542', { title: true });
+    this.txt = T(this, bx + 12, by + 19, '', 10, '#ffe9c0', { wordWrap: { width: bw - 30, useAdvancedWrap: true }, lineSpacing: 2 });
+    this.arrow = T(this, bx + bw - 12, by + bh - 8, '▼', 8, '#f5c542').setOrigin(0.5);
+    this.tweens.add({ targets: this.arrow, y: this.arrow.y + 2, duration: 400, yoyo: true, repeat: -1 });
+    this.box.add([g, this.who, this.txt, this.arrow]);
+    const skip = T(this, GW - 34, GH - 10, 'PULAR ▶▶', 8, '#e8dcc0', { backgroundColor: '#00000099', padding: { x: 4, y: 2 } }).setOrigin(0.5).setDepth(20).setInteractive({ useHandCursor: true });
+    skip.on('pointerdown', (p, lx, ly, ev) => { ev && ev.stopPropagation && ev.stopPropagation(); this._done(); });
+    T(this, 6, GH - 10, IS_TOUCH ? 'Toque para continuar' : 'Clique, Enter ou Espaço para continuar', 7, '#8a7a60').setOrigin(0, 0.5).setDepth(20);
+    this.input.on('pointerdown', () => this.advance());
+    ['ENTER', 'SPACE', 'Z', 'J'].forEach(k => this.input.keyboard.on('keydown-' + k, () => this.advance()));
+    this.input.keyboard.on('keydown-ESC', () => this._done());
+    addMuteButton(this, GW - 12, GH - 26);
+    Music.play('story');
+    this.advance();
+  }
+  advance() {
+    if (this._leaving) return;
+    if (this.typing) { this._finishType(); return; }
+    this.i++;
+    if (this.i >= this.pages.length) { this._done(); return; }
+    SFX.click(); this._show(this.pages[this.i]);
+  }
+  _done() { if (this.typeEv) this.typeEv.remove(); goTo(this, this.nextKey, this.nextData); }
+  _show(pg) {
+    this.stage.removeAll(true);
+    const add = o => { this.stage.add(o); return o; };
+    (BG_LAYERS[pg.bg] || BG_LAYERS[1]).forEach(([key]) => add(this.add.tileSprite(GW / 2, GH / 2, GW, GH, key, 0)));
+    for (let x = 0; x < GW; x += 32) add(this.add.image(x + 16, GH - 16, 'ground' + pg.bg));
+    add(this.add.image(GW / 2, GH / 2, 'vignette').setDisplaySize(GW, GH).setAlpha(0.8));
+    if (pg.title) {
+      this.box.setVisible(false);
+      const dim = add(this.add.graphics()); dim.fillStyle(0x000000, 0.55).fillRect(0, 0, GW, GH);
+      const a = add(T(this, GW / 2, GH / 2 - 26, `ATO ${ROMAN[pg.title]}`, 14, '#e8b860', { title: true, stroke: '#000', strokeThickness: 4 }).setOrigin(0.5).setAlpha(0));
+      const b = add(T(this, GW / 2, GH / 2 + 4, ACT_NAMES[pg.title].toUpperCase(), 22, '#ffd23a', { title: true, stroke: '#2a0a04', strokeThickness: 6 }).setOrigin(0.5).setAlpha(0).setScale(1.3));
+      this.tweens.add({ targets: a, alpha: 1, duration: 500 });
+      this.tweens.add({ targets: b, alpha: 1, scale: 1, duration: 700, delay: 250, ease: 'Back.easeOut', onStart: () => SFX.clang() });
+      this.typing = false;
+      return;
+    }
+    this.box.setVisible(true);
+    (pg.cast || []).forEach(([key, fr, fx, sc, left], k) => {
+      const s = add(this.add.sprite(GW * fx, GH - 32, key, fr).setOrigin(0.5, 1).setScale(sc).setFlipX(!!left).setAlpha(0));
+      this.tweens.add({ targets: s, alpha: 1, duration: 400, delay: k * 120 });
+      this.tweens.add({ targets: s, y: s.y - 2, duration: 1100 + k * 90, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    });
+    this.who.setText(pg.who || '');
+    this.full = pg.text; this.n = 0; this.txt.setText(''); this.typing = true; this.arrow.setVisible(false);
+    if (this.typeEv) this.typeEv.remove();
+    this.typeEv = this.time.addEvent({ delay: 26, loop: true, callback: () => {
+      this.n++; this.txt.setText(this.full.slice(0, this.n));
+      if (this.n % 3 === 0) SFX.type();
+      if (this.n >= this.full.length) this._finishType();
+    } });
+  }
+  _finishType() { if (this.typeEv) this.typeEv.remove(); this.txt.setText(this.full); this.typing = false; this.arrow.setVisible(true); }
+}
+
 // ---------- integração com o app Android ----------
 // Botão "voltar": no jogo pausa/retoma; nas outras telas volta ao menu; no menu fecha o app.
 window.kqBack = function () {
@@ -2806,7 +3488,7 @@ function startGame() {
     backgroundColor: '#050308',
     pixelArt: true,
     physics: { default: 'arcade', arcade: { gravity: { y: 510 }, debug: false } },
-    scene: [BootScene, MenuScene, GameScene, UIScene, ShopScene, RankingScene, GameOverScene, VictoryScene],
+    scene: [BootScene, MenuScene, StoryScene, GameScene, UIScene, ShopScene, RankingScene, GameOverScene, VictoryScene],
     scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH }
   });
 }
