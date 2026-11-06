@@ -4,9 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Jornada do Cavaleiro — Uma aventura medieval em pixel art | DARO Games</title>
-<meta name="description" content="Jornada do Cavaleiro é um jogo de plataforma 2D em pixel art da DARO Games, em desenvolvimento: 3 atos, 11 fases, 5 chefes e muito mais a caminho. Apoie o projeto no Catarse!">
+<meta name="description" content="Jornada do Cavaleiro é um jogo de plataforma 2D em pixel art da DARO Games, em desenvolvimento: 5 atos, 20 fases, 9 chefes e muito mais a caminho. Apoie o projeto no Catarse!">
 <meta property="og:title" content="Jornada do Cavaleiro — DARO Games">
-<meta property="og:description" content="Plataforma 2D em pixel art: 3 atos, 11 fases e 5 chefes. Ajude o último cavaleiro da Ordem a salvar o Reino de Aurora.">
+<meta property="og:description" content="Plataforma 2D em pixel art: 5 atos, 20 fases e 9 chefes. Ajude o último cavaleiro da Ordem a salvar o Reino de Aurora.">
 <meta property="og:image" content="img/og.jpg">
 <meta property="og:type" content="website">
 <meta name="theme-color" content="#120609">
@@ -109,13 +109,14 @@
   .chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; }
   .chip { background: rgba(0,0,0,.35); border: 1px solid var(--line); padding: 2px 10px; font-size: 19px; }
   .chip.vilao { border-color: var(--red2); color: #ff9a9a; }
-  .a1 .num { color: #ff8a50; } .a2 .num { color: var(--ice); } .a3 .num { color: var(--purple); }
-  .a1 { border-color: #5a2a14; } .a2 { border-color: #24485a; } .a3 { border-color: #3a1a5a; }
+  .a1 .num { color: #ff8a50; } .a2 .num { color: var(--ice); } .a3 .num { color: var(--purple); } .a4 .num { color: #ffc060; } .a5 .num { color: #8fd0ff; }
+  .a1 { border-color: #5a2a14; } .a2 { border-color: #24485a; } .a3 { border-color: #3a1a5a; } .a4 { border-color: #6a4a18; } .a5 { border-color: #2a3a6a; }
   @media (max-width: 860px) { .act, .act:nth-child(even) { grid-template-columns: 1fr; } .act:nth-child(even) .shot { order: 0; } .act .shot { min-height: 200px; } }
 
   /* ---------- chefes ---------- */
   .bosses { background: radial-gradient(ellipse at 50% 0%, #2a0a14, var(--bg) 70%); }
   .boss-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 18px; }
+  .boss-grid .boss.final { grid-column: span 2; }
   .boss { background: linear-gradient(#1e0e16, #120810); border: 3px solid var(--line); text-align: center; padding: 18px 12px 20px; position: relative; transition: transform .2s, border-color .2s; }
   .boss:hover { transform: translateY(-6px); border-color: var(--gold); }
   .boss .pic { height: 170px; display: flex; align-items: flex-end; justify-content: center; margin-bottom: 12px; }
@@ -215,11 +216,11 @@
       <div class="kicker">DARO GAMES APRESENTA</div>
       <h1 class="title"><span class="a">JORNADA DO</span><span class="b">CAVALEIRO</span></h1>
       <div class="tagline">— Uma aventura medieval em pixel art —</div>
-      <p class="lead">O Reino de Aurora caiu nas trevas. Empunhe espada, escudo e fogo mágico e atravesse florestas, catacumbas, vulcões e o próprio Abismo para enfrentar o Rei Sombrio.</p>
+      <p class="lead">O Reino de Aurora caiu nas trevas. Empunhe espada, escudo e fogo mágico e atravesse florestas, catacumbas, vulcões, desertos e uma cidadela acima das nuvens para salvar o reino.</p>
       <div class="stats">
-        <div class="stat"><b>3</b><small>atos</small></div>
-        <div class="stat"><b>11+</b><small>fases</small></div>
-        <div class="stat"><b>5+</b><small>chefes</small></div>
+        <div class="stat"><b>5</b><small>atos</small></div>
+        <div class="stat"><b>20</b><small>fases</small></div>
+        <div class="stat"><b>9</b><small>chefes</small></div>
         <div class="stat"><b>100%</b><small>pixel art</small></div>
       </div>
       <div class="ctas">
@@ -245,7 +246,8 @@
       <div class="scroll-box">
         <p>Há muito tempo, o <b>Reino de Aurora</b> vivia em paz, protegido pela Ordem dos Cavaleiros.</p>
         <p>Até que <b>Malakar</b>, o campeão do rei, abriu os Portões do Abismo em busca de poder eterno. Corrompido, ele se coroou <b>Rei Sombrio</b> e enviou quatro generais para dominar o reino.</p>
-        <p>Você é o <b>último cavaleiro da Ordem</b>. Sua jornada começa na Floresta Sombria e só termina no coração do Abismo.</p>
+        <p>Você é o <b>último cavaleiro da Ordem</b>. Sua jornada começa na Floresta Sombria, passa pelo coração do Abismo e pelas areias de um faraó esquecido...</p>
+        <p>...e só termina no céu, diante de quem estava por trás de tudo desde o começo.</p>
       </div>
     </div>
     <div class="villain reveal">
@@ -259,7 +261,7 @@
 <!-- ATOS -->
 <section id="atos">
   <div class="wrap">
-    <h2 class="reveal">TRÊS ATOS, ONZE FASES</h2>
+    <h2 class="reveal">CINCO ATOS, VINTE FASES</h2>
     <p class="sub reveal">Cada ato tem seu próprio mundo, inimigos, trilha sonora e cenas de história.</p>
     <div class="acts">
       <article class="act a1 reveal">
@@ -289,6 +291,24 @@
           <div class="chips"><span class="chip">Portões do Abismo</span><span class="chip">Ruínas Flutuantes</span><span class="chip">Trono do Rei Sombrio</span><span class="chip vilao">Malakar</span></div>
         </div>
       </article>
+      <article class="act a4 reveal">
+        <div class="shot" style="background-image:url(img/shot_f12.jpg)"></div>
+        <div class="body">
+          <div class="num">ATO IV</div>
+          <h3>AS AREIAS DO FARAÓ</h3>
+          <p>Sob o sol do Deserto de Sahran, múmias e escorpiões guardam pirâmides e templos. Cuidado com a areia movediça.</p>
+          <div class="chips"><span class="chip">Dunas Escaldantes</span><span class="chip">Oásis Perdido</span><span class="chip">Templo do Sol Negro</span><span class="chip">Câmara de Nehkar</span><span class="chip vilao">Escorpião Colossal</span><span class="chip vilao">Nehkar</span></div>
+        </div>
+      </article>
+      <article class="act a5 reveal">
+        <div class="shot" style="background-image:url(img/shot_f16.jpg)"></div>
+        <div class="body">
+          <div class="num">ATO V</div>
+          <h3>A FÚRIA DA TEMPESTADE</h3>
+          <p>Uma cidadela flutua acima das nuvens, entre chuva e relâmpagos. Harpias e cavaleiros da tempestade protegem o último inimigo.</p>
+          <div class="chips"><span class="chip">Ponte das Nuvens</span><span class="chip">Picos Trovejantes</span><span class="chip">Ninho do Grifo</span><span class="chip">Cidadela da Tempestade</span><span class="chip">Trono do Trovão</span><span class="chip vilao">Grifo da Tempestade</span><span class="chip vilao">Vorath</span></div>
+        </div>
+      </article>
     </div>
   </div>
 </section>
@@ -299,13 +319,17 @@
 <section class="bosses" id="chefes">
   <div class="wrap">
     <h2 class="reveal">OS CHEFES</h2>
-    <p class="sub reveal">Quatro generais e um rei. Cada um com ataques próprios, uma segunda fase enfurecida e algo a dizer antes da luta.</p>
+    <p class="sub reveal">Nove chefes, cada um com ataques próprios, uma segunda fase enfurecida e algo a dizer antes da luta.</p>
     <div class="boss-grid">
       <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_dragon.png" alt="Dragão das Trevas"></div><div class="where">Castelo das Trevas</div><h3>DRAGÃO DAS TREVAS</h3><p>Bolas de fogo e investidas pelo salão do castelo.</p></div>
       <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_lich.png" alt="Rei Lich"></div><div class="where">Pico Vulcânico</div><h3>REI LICH</h3><p>Orbes mágicos, teletransporte e morcegos invocados.</p></div>
       <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_giant.png" alt="Gigante de Gelo"></div><div class="where">Pico da Nevasca</div><h3>GIGANTE DE GELO</h3><p>Pisões que racham o chão e pedras de gelo arremessadas.</p></div>
       <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_queen.png" alt="Rainha Espectral"></div><div class="where">Catedral dos Espectros</div><h3>RAINHA ESPECTRAL</h3><p>Caveiras teleguiadas e ataques vindos do nada.</p></div>
-      <div class="boss final reveal"><span class="tag">CHEFE FINAL</span><div class="pic"><img class="px" src="img/spr_king.png" alt="Malakar, o Rei Sombrio"></div><div class="where">Trono do Rei Sombrio</div><h3>MALAKAR</h3><p>Golpes de espada, investidas e ondas sombrias.</p></div>
+      <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_king.png" alt="Malakar, o Rei Sombrio"></div><div class="where">Trono do Rei Sombrio</div><h3>MALAKAR</h3><p>Golpes de espada, investidas e ondas sombrias.</p></div>
+      <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_scorpion.png" alt="Escorpião Colossal"></div><div class="where">Oásis Perdido</div><h3>ESCORPIÃO COLOSSAL</h3><p>Pinças em investida, veneno e ataques por baixo da areia.</p></div>
+      <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_nehkar.png" alt="Nehkar, o Faraó Esquecido"></div><div class="where">Câmara de Nehkar</div><h3>NEHKAR</h3><p>Esferas solares, raios de sol e múmias invocadas.</p></div>
+      <div class="boss reveal"><div class="pic"><img class="px" src="img/spr_griffin.png" alt="Grifo da Tempestade"></div><div class="where">Ninho do Grifo</div><h3>GRIFO DA TEMPESTADE</h3><p>Penas afiadas, mergulhos com as garras e ventania.</p></div>
+      <div class="boss final reveal"><span class="tag">CHEFE FINAL</span><div class="pic"><img class="px" src="img/spr_vorath.png" alt="Vorath, o Senhor das Tempestades"></div><div class="where">Trono do Trovão</div><h3>VORATH</h3><p>Raios, relâmpagos do céu, ondas elétricas e teletransporte.</p></div>
     </div>
   </div>
 </section>
@@ -321,6 +345,8 @@
       <div class="feat reveal"><div class="ico"><img class="px" src="img/spr_chest.png" alt=""></div><div><h3>BAÚS E SEGREDOS</h3><p>Paredes rachadas, plataformas invisíveis e itens raros escondidos em cada fase.</p></div></div>
       <div class="feat reveal"><div class="ico"><img class="px" src="img/spr_coin.png" alt=""></div><div><h3>FORJA DO REINO</h3><p>Junte moedas e escolha suas melhorias: vida, espada, chamas e vidas extras.</p></div></div>
       <div class="feat reveal"><div class="ico"><img class="px" src="img/spr_potion.png" alt=""></div><div><h3>HISTÓRIA COMPLETA</h3><p>Cenas entre os atos, diálogos com cada chefe e um final de verdade.</p></div></div>
+      <div class="feat reveal"><div class="ico"><img class="px" src="img/spr_coin.png" alt=""></div><div><h3>FASES BÔNUS</h3><p>Corra contra o relógio para juntar moedas e abrir o baú do tesouro.</p></div></div>
+      <div class="feat reveal"><div class="ico"><img class="px" src="img/spr_knight.png" alt=""></div><div><h3>JOGO SALVO</h3><p>O progresso é salvo a cada fase e checkpoint. Saia quando quiser e continue depois.</p></div></div>
       <div class="feat reveal"><div class="ico"><img class="px" src="img/spr_heart.png" alt=""></div><div><h3>TRILHA ORIGINAL</h3><p>Músicas e efeitos sonoros próprios para cada mundo e cada chefe.</p></div></div>
     </div>
   </div>
@@ -334,15 +360,19 @@
     <h2 class="reveal">GALERIA</h2>
     <p class="sub reveal">Imagens reais do jogo. Clique para ampliar.</p>
     <div class="gallery reveal">
-      <button class="big"><img src="img/shot_boss_king.jpg" alt="Batalha contra Malakar, o Rei Sombrio"></button>
+      <button class="big"><img src="img/shot_boss_vorath.jpg" alt="Batalha contra Vorath, o Senhor das Tempestades"></button>
+      <button><img src="img/shot_boss_king.jpg" alt="Batalha contra Malakar, o Rei Sombrio"></button>
+      <button><img src="img/shot_f19.jpg" alt="Cidadela da Tempestade"></button>
+      <button><img src="img/shot_boss_griffin.jpg" alt="Batalha contra o Grifo da Tempestade"></button>
+      <button><img src="img/shot_f14.jpg" alt="Templo do Sol Negro"></button>
+      <button><img src="img/shot_boss_nehkar.jpg" alt="Batalha contra Nehkar, o Faraó Esquecido"></button>
+      <button><img src="img/shot_boss_scorpion.jpg" alt="Batalha contra o Escorpião Colossal"></button>
       <button><img src="img/shot_f1.jpg" alt="Floresta Sombria"></button>
       <button><img src="img/shot_f2.jpg" alt="Catacumbas Malditas"></button>
       <button><img src="img/shot_boss_giant.jpg" alt="Batalha contra o Gigante de Gelo"></button>
       <button><img src="img/shot_f7.jpg" alt="Vila Assombrada"></button>
       <button><img src="img/shot_boss_queen.jpg" alt="Batalha contra a Rainha Espectral"></button>
-      <button><img src="img/shot_f9.jpg" alt="Portões do Abismo"></button>
       <button><img src="img/shot_shop.jpg" alt="Forja do Reino"></button>
-      <button><img src="img/shot_menu.jpg" alt="Tela inicial"></button>
     </div>
   </div>
 </section>
@@ -351,7 +381,7 @@
 <section id="novidades">
   <div class="wrap">
     <h2 class="reveal">A JORNADA ESTÁ SÓ COMEÇANDO</h2>
-    <p class="sub reveal">A Jornada do Cavaleiro está em desenvolvimento ativo. O que você vê aqui é só o começo: o reino ainda vai crescer muito.</p>
+    <p class="sub reveal">A Jornada do Cavaleiro está em desenvolvimento ativo. Já são 20 fases e 9 chefes, e o reino ainda vai crescer muito.</p>
     <div class="roadmap">
       <div class="road reveal"><span class="q">?</span><div class="ico"><img class="px" src="img/spr_chest.png" alt=""></div><h3>MAIS FASES</h3><p>Novos mundos, novos atos e caminhos ainda mais perigosos.</p></div>
       <div class="road reveal"><span class="q">?</span><div class="ico"><img class="px mist" src="img/spr_dragon.png" alt=""></div><h3>MAIS CHEFES</h3><p>Novos inimigos colossais esperando pelo cavaleiro.</p></div>
@@ -381,7 +411,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="chars"><img class="px" src="img/spr_goblin.png" alt=""><img class="px" src="img/spr_skeleton.png" alt=""><img class="px" src="img/spr_knight.png" alt="" style="height:80px"><img class="px" src="img/spr_ghost.png" alt=""><img class="px" src="img/spr_gargoyle.png" alt=""></div>
+    <div class="chars"><img class="px" src="img/spr_goblin.png" alt=""><img class="px" src="img/spr_skeleton.png" alt=""><img class="px" src="img/spr_knight.png" alt="" style="height:80px"><img class="px" src="img/spr_ghost.png" alt=""><img class="px" src="img/spr_mummy.png" alt=""><img class="px" src="img/spr_harpy.png" alt=""><img class="px" src="img/spr_stormknight.png" alt=""></div>
     <div class="brand">DARO GAMES</div>
     <div>© <span id="ano">2026</span> DARO Games. Todos os direitos reservados.</div>
   </div>
